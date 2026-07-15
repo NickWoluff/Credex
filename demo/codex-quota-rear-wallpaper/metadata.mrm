@@ -1,0 +1,23 @@
+{
+  "authors": {
+    "fallback": "OuterView",
+    "zh_CN": "OuterView"
+  },
+  "designers": {
+    "fallback": "OuterView",
+    "zh_CN": "OuterView"
+  },
+  "titles": {
+    "fallback": "OuterView Codex Quota",
+    "zh_CN": "OuterView Codex 配额"
+  },
+  "descriptions": {
+    "fallback": "Ambient Codex quota wallpaper for OuterView",
+    "zh_CN": "面向 OuterView 的环境化 Codex 配额壁纸"
+  },
+  "subResourceType": "OuterView",
+  "resSubType": "outerview_codex_quota",
+  "isRearScreenEditable": false,
+  "isThirdParties": true,
+  "supportAon": false
+}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<theme>
+  <version>1</version>
+  <osVersion>3</osVersion>
+  <resourceType>rearscreen</resourceType>
+  <subResourceType>OuterView</subResourceType>
+  <isSingleAdditionAllowed>1</isSingleAdditionAllowed>
+  <uiVersion>15</uiVersion>
+  <author>OuterView</author>
+  <designer>OuterView</designer>
+  <title>OuterView Codex Quota</title>
+  <description>Ambient Codex quota wallpaper for the rear display</description>
+  <editable>false</editable>
+  <frame>1</frame>
+  <isSystemRes>false</isSystemRes>
+</theme>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep the generated bitmap inside the adaptive-icon safe zone. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:inset="8dp">
+    <bitmap
+        android:gravity="fill"
+        android:src="@drawable/app_icon_gpt" />
+</inset>

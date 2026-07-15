@@ -1,0 +1,6 @@
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="ObsoleteSdkInt">
+    <background android:drawable="@color/launcher_background" />
+    <foreground android:drawable="@drawable/app_icon_gpt_foreground" />
+</adaptive-icon>

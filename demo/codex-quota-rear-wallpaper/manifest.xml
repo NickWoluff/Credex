@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Widget version="1" frameRate="0" type="awesome" useVariableUpdater="DateTime.Minute" screenWidth="1080" scaleByDensity="false">
+  <!--
+    Rear Wallpaper contract. This is Widget v1, not the Widget v2 Smart
+    Assistant card contract. The proven rear-screen reference is 480 x 304.
+  -->
+  <Var name="scene_scale" type="number" expression="min((#view_width / 480),(#view_height / 304))"/>
+  <Var name="scene_offset_x" type="number" expression="((#view_width - (480 * #scene_scale)) / 2)"/>
+  <Var name="scene_offset_y" type="number" expression="((#view_height - (304 * #scene_scale)) / 2)"/>
+
+  <!-- Provider values are display-only and clamped before drawing. -->
+  <Var name="fiveSafe" type="number" expression="ifelse(#five_hour_remaining{0,0,ifelse(#five_hour_remaining}100,100,#five_hour_remaining))"/>
+  <Var name="weekSafe" type="number" expression="ifelse(#weekly_remaining{0,0,ifelse(#weekly_remaining}100,100,#weekly_remaining))"/>
+  <Var name="isBound" type="number" expression="ifelse(strIsEmpty(@updated_at),0,1)"/>
+  <Var name="hasFive" type="number" expression="ifelse(#isBound ** (#five_hour_remaining}-1),1,0)"/>
+  <Var name="hasWeek" type="number" expression="ifelse(#isBound ** (#weekly_remaining}-1),1,0)"/>
+  <!-- 0 none, 1 weekly-only, 2 five-hour-only, 3 both. -->
+  <Var name="quotaState" type="number" expression="(#hasFive*2+#hasWeek)"/>
+
+  <Var name="fiveLabel" type="string" expression="#fiveSafe+'%'"/>
+  <Var name="weekLabel" type="string" expression="#weekSafe+'%'"/>
+  <Var name="fiveColor" type="number" expression="ifelse(#fiveSafe{15,0xffff6b6b,ifelse(#fiveSafe{35,0xffffb454,0xff55d6a8))"/>
+  <Var name="weekColor" type="number" expression="ifelse(#weekSafe{15,0xffff6b6b,ifelse(#weekSafe{35,0xffffb454,0xff55d6a8))"/>
+  <Var name="barTrackColor" type="number" expression="0xff3b4542"/>
+
+  <!-- MAML's MMM/EEEE output follows the device locale. Use explicit English
+       names so the rear wallpaper stays consistent on Chinese-language phones. -->
+  <Var name="monthName" type="string" expression="ifelse(#month1==1,'JAN',ifelse(#month1==2,'FEB',ifelse(#month1==3,'MAR',ifelse(#month1==4,'APR',ifelse(#month1==5,'MAY',ifelse(#month1==6,'JUN',ifelse(#month1==7,'JUL',ifelse(#month1==8,'AUG',ifelse(#month1==9,'SEP',ifelse(#month1==10,'OCT',ifelse(#month1==11,'NOV','DEC'))))))))))))"/>
+
+  <Var name="singleSafe" type="number" expression="ifelse(#quotaState==1,#weekSafe,#fiveSafe)"/>
+  <Var name="singleLabel" type="string" expression="ifelse(#quotaState==1,@weekLabel,@fiveLabel)"/>
+  <Var name="singleTitle" type="string" expression="ifelse(#quotaState==1,'WEEKLY','5-HOUR')"/>
+  <Var name="singleReset" type="string" expression="ifelse(#quotaState==1,@weekly_reset,@five_hour_reset)"/>
+  <Var name="singleColor" type="number" expression="ifelse(#quotaState==1,#weekColor,#fiveColor)"/>
+
+  <Var name="statusColor" type="number" expression="ifelse(eqs(@status,'OK'),0xff10a37f,ifelse(eqs(@status,'Not signed in'),0xff7c7c76,0xffc77a10))"/>
+  <Var name="footerLabel" type="string" expression="ifelse(strIsEmpty(@updated_at),ifelse(eqs(@status,'Not signed in'),'NOT CONNECTED','NO UPDATE YET'),'LAST UPDATE '+@updated_at)"/>
+  <Var name="emptyTitle" type="string" expression="ifelse(eqs(@status,'OK'),'NO QUOTA WINDOW','CONNECT OUTERVIEW QUOTA')"/>
+  <Var name="emptyDetail" type="string" expression="ifelse(eqs(@status,'OK'),'No usage limits were returned','Open the companion app to authorize')"/>
+
+  <Rectangle w="#view_width" h="#view_height" fillColor="#ff0d0d0c"/>
+
+  <Group x="#scene_offset_x" y="#scene_offset_y" scaleX="#scene_scale" scaleY="#scene_scale">
+    <!-- Quiet orbital field: full-canvas ambience, never a card container. -->
+    <Circle x="456" y="152" r="202" fillColor="#ff121210"/>
+    <Circle x="456" y="152" r="154" fillColor="#ff0f0f0e"/>
+    <Circle x="456" y="152" r="109" fillColor="#ff151513"/>
+    <Circle x="456" y="152" r="70" fillColor="#ff10100f"/>
+    <Circle x="456" y="152" r="3" fillColor="#ff292926"/>
+
+    <!-- Camera-safe datum: meaningful content begins at x=183. -->
+    <Rectangle x="183" y="17" w="1" h="269" fillColor="#ff292926"/>
+    <Circle x="183.5" y="30" r="2.5" fillColor="#ff10a37f"/>
+
+    <!-- Time remains the wallpaper's primary job. -->
+    <Circle x="202" y="31" r="6" fillColor="#fff4f4ef"/>
+    <Circle x="202" y="31" r="3" fillColor="#ff0d0d0c"/>
+    <Circle x="205" y="28" r="1.5" fillColor="#ff10a37f"/>
+    <Text x="214" y="22" size="14" color="#fff4f4ef" text="OuterView" fontFamily="mipro-demibold"/>
+    <Text x="214" y="40" size="8" color="#ff9daca7" text="CODEX USAGE / AMBIENT" fontFamily="mipro-medium"/>
+
+    <DateTime x="200" y="82" alignV="center" format="HH:mm" size="54" color="#fff4f4ef" fontFamily="mipro-demibold"/>
+    <Text x="202" y="116" size="12" color="#ffd1d1c7" textExp="@monthName+' '+#date" fontFamily="mipro-medium"/>
+
+    <!-- Both quota windows: compact horizon readings beneath the clock. -->
+    <Group visibility="#quotaState==3">
+      <Text x="202" y="145" size="11" color="#ffc6d2cb" text="WEEKLY" fontFamily="mipro-medium"/>
+      <Text x="454" y="132" size="27" color="#fff4f4ef" align="right" textExp="@weekLabel" fontFamily="mipro-demibold"/>
+      <Rectangle x="202" y="174" w="252" h="5" cornerRadius="2.5" fillColor="#barTrackColor"/>
+      <Rectangle x="202" y="174" w="(252*#weekSafe/100)" h="5" cornerRadius="2.5" fillColor="#weekColor"/>
+      <Text x="202" y="185" size="9" color="#ff9daca7" textExp="'Resets '+@weekly_reset" fontFamily="mipro-medium"/>
+
+      <Text x="202" y="204" size="11" color="#ffc6d2cb" text="5-HOUR" fontFamily="mipro-medium"/>
+      <Text x="454" y="191" size="27" color="#fff4f4ef" align="right" textExp="@fiveLabel" fontFamily="mipro-demibold"/>
+      <Rectangle x="202" y="233" w="252" h="5" cornerRadius="2.5" fillColor="#barTrackColor"/>
+      <Rectangle x="202" y="233" w="(252*#fiveSafe/100)" h="5" cornerRadius="2.5" fillColor="#fiveColor"/>
+      <Text x="202" y="244" size="9" color="#ff9daca7" textExp="'Resets '+@five_hour_reset" fontFamily="mipro-medium"/>
+    </Group>
+
+    <!-- One returned window. A missing 5-hour window is never fabricated. -->
+    <Group visibility="(#quotaState!=0) ** (#quotaState!=3)">
+      <Text x="202" y="153" size="12" color="#ffc6d2cb" textExp="@singleTitle" fontFamily="mipro-medium"/>
+      <Text x="454" y="132" size="44" color="#fff4f4ef" align="right" textExp="@singleLabel" fontFamily="mipro-demibold"/>
+      <Rectangle x="202" y="205" w="252" h="7" cornerRadius="3.5" fillColor="#barTrackColor"/>
+      <Rectangle x="202" y="205" w="(252*#singleSafe/100)" h="7" cornerRadius="3.5" fillColor="#singleColor"/>
+      <Text x="202" y="221" size="10" color="#ff9daca7" textExp="'Resets '+@singleReset" fontFamily="mipro-medium"/>
+    </Group>
+
+    <!-- Disconnected / no-window state remains quiet and actionable. -->
+    <Group visibility="#quotaState==0">
+      <Text x="202" y="157" size="18" color="#fff4f4ef" textExp="@emptyTitle" fontFamily="mipro-demibold"/>
+      <Text x="202" y="186" size="10" color="#ff9daca7" textExp="@emptyDetail" fontFamily="mipro-medium"/>
+      <Rectangle x="202" y="214" w="84" h="4" cornerRadius="2" fillColor="#barTrackColor"/>
+    </Group>
+
+    <!-- Footer ends before the y=288 gesture area. -->
+    <Circle x="204" y="272" r="2.5" fillColor="#statusColor"/>
+    <Text x="213" y="265" size="8" color="#ff9daca7" textExp="@footerLabel" fontFamily="mipro-medium"/>
+    <Text x="454" y="265" size="8" color="#ff9daca7" align="right" text="TOUCH / REFRESH" fontFamily="mipro-medium"/>
+  </Group>
+
+  <VariableBinders>
+    <ContentProviderBinder name="CodexQuota" uri="content://org.orynnx.codexquota/quota" columns="five_hour_remaining,five_hour_reset,weekly_remaining,weekly_reset,plan,status,updated_at">
+      <Variable name="five_hour_remaining" type="int" column="five_hour_remaining"/>
+      <Variable name="five_hour_reset" type="string" column="five_hour_reset"/>
+      <Variable name="weekly_remaining" type="int" column="weekly_remaining"/>
+      <Variable name="weekly_reset" type="string" column="weekly_reset"/>
+      <Variable name="plan" type="string" column="plan"/>
+      <Variable name="status" type="string" column="status"/>
+      <Variable name="updated_at" type="string" column="updated_at"/>
+    </ContentProviderBinder>
+  </VariableBinders>
+
+  <!-- Active refresh: first render, every resume, and every minute while alive. -->
+  <ExternalCommands>
+    <Trigger action="init,resume"><BinderCommand name="CodexQuota" command="refresh"/></Trigger>
+  </ExternalCommands>
+  <Var expression="#time_sys" threshold="60000"><Trigger><BinderCommand name="CodexQuota" command="refresh"/></Trigger></Var>
+
+  <!-- Root-level transparent hit target follows the proven dino_game pattern. -->
+  <Group x="0" y="0" w="#view_width" h="#view_height" alpha="0"
+         touchable="true" interceptTouch="true">
+    <Triggers>
+      <Trigger action="up"><BinderCommand name="CodexQuota" command="refresh"/></Trigger>
+    </Triggers>
+  </Group>
+</Widget>

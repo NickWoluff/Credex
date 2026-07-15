@@ -1,0 +1,8 @@
+*.png binary
+*.mp3 binary
+*.zip binary
+*.bat text eol=crlf
+*.sh text eol=lf
+*.kt text eol=lf
+*.kts text eol=lf
+*.md text eol=lf

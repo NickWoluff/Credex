@@ -1,0 +1,14 @@
+<resources>
+    <color name="launcher_background">#0F0F0E</color>
+    <color name="app_window_background">#F7F7F5</color>
+    <color name="widget_background">#F7F7F5</color>
+    <color name="widget_border">#1A121210</color>
+    <color name="widget_text_primary">#171716</color>
+    <color name="widget_text_muted">#686862</color>
+    <color name="widget_surface">#E9E9E4</color>
+    <color name="widget_progress">#171716</color>
+    <color name="widget_status_success">#238B68</color>
+    <color name="widget_status_refreshing">#3478D4</color>
+    <color name="widget_status_warning">#A66613</color>
+    <color name="widget_status_error">#BA3B36</color>
+</resources>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OuterView Quota</string>
+    <string name="widget_name">OuterView Quota</string>
+    <string name="widget_name_short">OuterView</string>
+    <string name="widget_description">在主屏幕查看 Codex 周配额，并可一键刷新。</string>
+    <string name="widget_weekly">WEEKLY</string>
+    <string name="widget_five_hour">5 HOURS</string>
+    <string name="widget_codex_usage">CODEX USAGE</string>
+    <string name="widget_reset_at">重置于 %1$s</string>
+    <string name="widget_refresh">刷新配额</string>
+    <string name="widget_refreshing">正在更新</string>
+    <string name="widget_up_to_date">已是最新</string>
+    <string name="widget_last_updated">最后更新</string>
+    <string name="widget_last_updated_at">最后更新 %1$s</string>
+    <string name="widget_connected">已连接</string>
+    <string name="widget_no_window">暂无配额窗口</string>
+    <string name="widget_cached">显示缓存</string>
+    <string name="widget_last_success">上次成功 %1$s</string>
+    <string name="widget_auth_required">需要重新授权</string>
+    <string name="widget_not_connected">尚未连接</string>
+    <string name="widget_tap_to_open">轻触打开 App</string>
+    <string name="widget_tap_reauthorize">轻触打开并重新授权</string>
+    <string name="widget_sign_in">登录</string>
+    <string name="widget_authorize">授权</string>
+    <string name="widget_no_data">暂无</string>
+    <string name="widget_status_dot">●</string>
+    <string name="widget_sample_primary">64%</string>
+    <string name="widget_sample_secondary">82%</string>
+    <string name="widget_sample_updated">已是最新</string>
+    <string name="widget_sample_time">22:00</string>
+</resources>
