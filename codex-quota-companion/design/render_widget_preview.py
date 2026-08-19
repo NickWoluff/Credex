@@ -23,7 +23,7 @@ def rect(draw, box, radius, fill, outline=None, width=1):
     draw.rounded_rectangle(tuple(v * SCALE for v in box), radius * SCALE, fill=fill, outline=outline, width=width * SCALE)
 
 
-def mark(draw, x, y, size, ink, bg, green):
+def mark(draw, x, y, size, ink, green):
     box = tuple(v * SCALE for v in (x, y, x + size, y + size))
     draw.ellipse(box, outline=ink, width=1 * SCALE)
     inset = size * .29
@@ -47,7 +47,7 @@ def refresh_icon(draw, x, y, color):
     )
 
 
-def widget(width, dark=False, dual=False, signed_out=False, cached=False):
+def widget(width, dark=False, dual=False, signed_out=False, cached=False, balance=False):
     height = 110
     palette = {
         "bg": "#171716" if dark else "#f7f7f5",
@@ -58,70 +58,83 @@ def widget(width, dark=False, dual=False, signed_out=False, cached=False):
         "green": "#5bd3a5" if dark else "#238b68",
         "amber": "#e7ad61" if dark else "#a66613",
     }
-    image = Image.new("RGB", (width * SCALE, height * SCALE), (0, 0, 0))
+    image = Image.new("RGB", (width * SCALE, height * SCALE), palette["bg"])
     draw = ImageDraw.Draw(image)
-    rect(draw, (0, 0, width, height), 20, palette["bg"], palette["border"])
+    rect(draw, (0, 0, width, height), 18, palette["bg"], palette["border"])
 
     if width < 220:
-        text(draw, (8, 7), "Quota", 11, palette["ink"], "semibold")
-        refresh_icon(draw, width - 25, 16, palette["muted"])
+        mark(draw, 10, 10, 14, palette["ink"], palette["green"])
+        text(draw, (30, 10), "OUTERVIEW", 9, palette["ink"], "semibold")
+        refresh_icon(draw, width - 19, 17, palette["muted"])
         if signed_out:
-            text(draw, (8, 38), "CODEX", 11, palette["muted"], "semibold")
-            text(draw, (width - 8, 58), "登录", 24, palette["ink"], "semibold", "rm")
+            text(draw, (10, 39), "CODEX", 10, palette["muted"], "semibold")
+            text(draw, (10, 56), "登录以查看配额", 13, palette["ink"], "semibold")
             status, dot = "轻触打开 App", palette["muted"]
+        elif balance:
+            text(draw, (10, 39), "SILICONFLOW", 9, palette["muted"], "semibold")
+            text(draw, (width - 10, 57), "¥3.40", 23, palette["ink"], "light", "rm")
+            progress(draw, 10, 72, width - 20, 72, palette["surface"], palette["ink"])
+            text(draw, (10, 80), "已连接 · 22:00", 8, palette["muted"])
+            status, dot = "余额已同步", palette["green"]
         else:
-            text(draw, (8, 40), "WEEKLY", 11, palette["muted"], "semibold")
-            text(draw, (width - 8, 58), "64%", 29, palette["ink"], "light", "rm")
-            progress(draw, 8, 79, width - 16, 64, palette["surface"], palette["ink"])
-            text(draw, (8, 85), "重置于 6天14小时后更新", 8, palette["muted"])
-            status, dot = (("最后更新 21:57", palette["amber"]) if cached else ("最后更新 22:00", palette["green"]))
-        draw.ellipse(tuple(v * SCALE for v in (8, 98, 13, 103)), fill=dot)
-        text(draw, (16, 96), status, 11, palette["muted"], "semibold")
+            text(draw, (10, 39), "WEEKLY", 10, palette["muted"], "semibold")
+            text(draw, (width - 10, 58), "64%", 25, palette["ink"], "light", "rm")
+            progress(draw, 10, 72, width - 20, 64, palette["surface"], palette["ink"])
+            text(draw, (10, 80), "重置于 6天14小时后", 8, palette["muted"])
+            status, dot = (("显示缓存", palette["amber"]) if cached else ("最后更新 22:00", palette["green"]))
+        draw.ellipse(tuple(v * SCALE for v in (10, 98, 15, 103)), fill=dot)
+        text(draw, (19, 95), status, 9, palette["muted"], "semibold")
         return image
 
-    mark(draw, 12, 11, 18, palette["ink"], palette["bg"], palette["green"])
-    text(draw, (37, 10), "OuterView Quota", 11, palette["ink"], "semibold")
-    refresh_icon(draw, width - 25, 16, palette["muted"])
+    mark(draw, 12, 11, 16, palette["ink"], palette["green"])
+    text(draw, (35, 10), "OUTERVIEW QUOTA", 10, palette["ink"], "semibold")
+    refresh_icon(draw, width - 19, 17, palette["muted"])
 
-    right_width = 84 if dual else 0
-    left_end = width - 12 - right_width - (14 if dual else 0)
-    text(draw, (12, 39), "WEEKLY", 11, palette["muted"], "semibold")
-    text(draw, (left_end, 57), "64%", 31, palette["ink"], "light", "rm")
-    progress(draw, 12, 77, left_end - 12, 64, palette["surface"], palette["ink"])
-    text(draw, (12, 83), "重置于 07-21 16:44", 8, palette["muted"])
+    right_width = 88 if dual else 0
+    left_end = width - 12 - right_width - (10 if dual else 0)
+    if balance:
+        text(draw, (12, 39), "SILICONFLOW", 9, palette["muted"], "semibold")
+        text(draw, (left_end, 57), "¥3.40", 25, palette["ink"], "light", "rm")
+        progress(draw, 12, 72, left_end - 12, 72, palette["surface"], palette["ink"])
+        text(draw, (12, 80), "已连接 · 22:00", 8, palette["muted"])
+    else:
+        text(draw, (12, 39), "WEEKLY", 10, palette["muted"], "semibold")
+        text(draw, (left_end, 57), "64%", 27, palette["ink"], "light", "rm")
+        progress(draw, 12, 72, left_end - 12, 64, palette["surface"], palette["ink"])
+        text(draw, (12, 80), "重置于 07-21 16:44", 8, palette["muted"])
 
     if dual:
-        rect(draw, (width - 96, 31, width - 12, 81), 12, palette["surface"])
-        text(draw, (width - 84, 35), "5 HOURS", 10, palette["muted"], "semibold")
-        text(draw, (width - 24, 58), "82%", 21, palette["ink"], "light", "rm")
-        progress(draw, width - 84, 72, 60, 82, palette["border"], palette["ink"])
-        text(draw, (width - 84, 79), "重置于 6小时后更新", 7, palette["muted"])
+        rect(draw, (width - 100, 31, width - 12, 82), 12, palette["surface"])
+        text(draw, (width - 88, 35), "5 HOURS", 9, palette["muted"], "semibold")
+        text(draw, (width - 22, 58), "82%", 20, palette["ink"], "light", "rm")
+        progress(draw, width - 88, 72, 64, 82, palette["border"], palette["ink"])
+        text(draw, (width - 88, 79), "重置于 6小时后", 7, palette["muted"])
 
     dot = palette["amber"] if cached else palette["green"]
-    label = "显示缓存" if cached else "最后更新"
+    label = "显示缓存" if cached else ("余额" if balance else "最后更新")
+    detail = "SILICONFLOW ¥3.40" if balance else ("上次成功 21:57" if cached else "22:00 · 6天14小时后")
     draw.ellipse(tuple(v * SCALE for v in (12, 98, 17, 103)), fill=dot)
-    text(draw, (21, 96), label, 10, palette["muted"], "semibold")
-    detail = "上次成功 21:57" if cached else "22:00"
-    if width >= 220:
-        detail = f"{detail} · 于6天14小时22分钟后更新"
-    text(draw, (width - 12, 96), detail, 9 if width >= 220 else 10, palette["muted"], anchor="ra")
+    text(draw, (21, 95), label, 9, palette["muted"], "semibold")
+    text(draw, (width - 12, 95), detail, 8, palette["muted"], anchor="ra")
     return image
 
 
 canvas = Image.new("RGB", (1000, 740), "#e7e7e2")
 draw = ImageDraw.Draw(canvas)
 text(draw, (40, 24), "OuterView Quota / Launcher widgets", 18, "#171716", "semibold")
-text(draw, (40, 50), "Front-screen, touch-first, responsive — not a rear-card crop", 11, "#686862")
+text(draw, (40, 50), "Fixed grid · single-line labels · no accidental wrapping", 11, "#686862")
 
 cases = [
-    (40, 140, widget(120), "Compact / Weekly only"),
+    (40, 140, widget(120), "Compact / Weekly"),
     (340, 140, widget(280, dual=True), "Medium / Two windows"),
-    (40, 430, widget(120, dark=True, signed_out=True), "Compact dark / Sign in"),
-    (340, 430, widget(280, dark=True, dual=True, cached=True), "Medium dark / Cached"),
+    (40, 430, widget(120, dark=True, balance=True), "Compact dark / Balance"),
+    (340, 430, widget(280, dark=True, balance=True), "Medium dark / Balance + quota"),
 ]
 for x, y, preview, label in cases:
     canvas.paste(preview, (x, y))
     draw.text((x, y + preview.height + 14), label, font=font(11, "semibold"), fill="#464641")
 
 canvas.save(ROOT / "widget-design-preview.png")
+widget(280, dual=True).save(ROOT / "widget-preview-4x2.png")
+widget(120).save(ROOT / "widget-preview-2x2.png")
 print(ROOT / "widget-design-preview.png")

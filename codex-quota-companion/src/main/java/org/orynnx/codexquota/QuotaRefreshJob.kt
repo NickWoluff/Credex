@@ -45,7 +45,7 @@ object QuotaRefreshScheduler {
 
     internal fun force(params: JobParameters) = params.extras.getBoolean(EXTRA_FORCE, true)
     internal fun shouldRetry(context: Context, params: JobParameters) =
-        QuotaRepository.signedIn(context) &&
+        (QuotaRepository.signedIn(context) || StandardBalanceRepository.hasAuthenticatedService(context)) &&
             (params.jobId != PERIODIC_JOB_ID || QuotaRepository.backgroundEnabled(context))
 
     fun cancel(context: Context) = context.getSystemService(JobScheduler::class.java).cancel(PERIODIC_JOB_ID)
@@ -75,15 +75,22 @@ class QuotaRefreshJobService : JobService() {
         val lease = RefreshLease()
         task = FutureTask {
             val before = QuotaRepository.current(applicationContext)
+            val balanceBefore = StandardBalanceRepository.list(applicationContext)
             var changed = false
             var retry = false
             try {
-                val after = QuotaRepository.refresh(
-                    applicationContext,
-                    force = QuotaRefreshScheduler.force(params),
-                    lease = lease,
-                )
+                val after = if (QuotaRepository.signedIn(applicationContext)) {
+                    QuotaRepository.refresh(
+                        applicationContext,
+                        force = QuotaRefreshScheduler.force(params),
+                        lease = lease,
+                    )
+                } else {
+                    before
+                }
                 changed = after != before
+                StandardBalanceRepository.refreshAll(applicationContext, force = QuotaRefreshScheduler.force(params))
+                changed = changed || balanceBefore != StandardBalanceRepository.list(applicationContext)
             } catch (_: Exception) {
                 retry = QuotaRefreshScheduler.shouldRetry(applicationContext, params)
             } finally {
@@ -106,7 +113,7 @@ class QuotaRefreshJobService : JobService() {
         running.remove(work.params.jobId)
         if (work.task.isCancelled) return
         if (changed) {
-            contentResolver.notifyChange("content://org.orynnx.codexquota/quota".toUri(), null)
+            QuotaDisplayContract.notifyAll(applicationContext)
         }
         // Also clears a pending refresh affordance if repository work failed early.
         QuotaAppWidgetProvider.updateAll(applicationContext)
@@ -137,7 +144,10 @@ class QuotaRefreshJobService : JobService() {
 
 class QuotaRefreshBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED && QuotaRepository.signedIn(context) && QuotaRepository.backgroundEnabled(context)) {
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED &&
+            (QuotaRepository.signedIn(context) || StandardBalanceRepository.hasAuthenticatedService(context)) &&
+            QuotaRepository.backgroundEnabled(context)
+        ) {
             QuotaRefreshScheduler.schedule(context)
             if (QuotaRepository.notificationSyncEnabled(context)) QuotaForegroundService.start(context)
         }

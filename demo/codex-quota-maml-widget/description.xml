@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<MIUI-Theme category="clock" size="4:2">
+  <version>1</version>
+  <uiVersion>1</uiVersion>
+  <title>OuterView Balance</title>
+  <titles>
+    <title locale="zh_CN">OuterView 余额</title>
+    <title locale="en_US">OuterView Balance</title>
+  </titles>
+</MIUI-Theme>

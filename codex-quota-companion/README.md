@@ -6,7 +6,7 @@ Version 0.9 adds the optional quiet-sync control to the standard Android Launche
 
 When a reset timestamp is available, the app and medium widget show both the absolute time and a relative countdown. The compact widget keeps only the one-line relative countdown when space permits, while preserving the last-successful-update status.
 
-After sign-in, add it from **Settings > Home screen > Add quota widget**. If the Launcher does not support in-app pinning, long-press the front home screen and select **OuterView Quota** from the widget picker. The development preview is `design/widget-design-preview.png`.
+After sign-in, add it from **Settings > Home screen > Add quota widget**. If the Launcher does not support in-app pinning, long-press the front home screen and select **OuterView Quota** from the widget picker. The development preview is `design/widget-design-preview.png`. Balance services can be enabled independently for the Android Launcher widget, Xiaomi desktop MAML, Assistant rear card, and Wallpaper rear surface; their order is controlled from Settings.
 
 The visual system follows OpenAI's published principles of geometric precision, rounded warmth, and generous spacing. OuterView remains the primary brand; the app does not reproduce the OpenAI logo or imply affiliation.
 
@@ -21,7 +21,7 @@ Transient refresh failures preserve the last known-good quota values. The UI lab
 1. The user completes a ChatGPT OAuth Authorization Code + PKCE flow in the system browser.
 2. The app encrypts the resulting access token with an Android Keystore AES key.
 3. It requests `GET https://chatgpt.com/backend-api/wham/usage` at most once per minute.
-4. The rear-screen MAML runtime reads only display fields through `content://org.orynnx.codexquota/quota`.
+4. Android and the rear-screen MAML runtimes read only display fields through the exported `content://org.orynnx.codexquota/quota` contract. Surface-specific MAML URIs are `/quota/desktop`, `/quota/assistant`, and `/quota/wallpaper`.
 5. Repository refreshes publish the same display-only state to placed Launcher widgets via standard `RemoteViews`.
 
 The provider never returns the OAuth token, refresh token, account identifier, or raw API response.

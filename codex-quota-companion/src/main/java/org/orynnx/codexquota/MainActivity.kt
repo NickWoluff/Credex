@@ -25,6 +25,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +54,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -68,6 +70,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -87,6 +92,24 @@ class MainActivity : ComponentActivity() {
     private var showSettings by mutableStateOf(false)
     private var serviceRunning by mutableStateOf(false)
     private var widgetInstallMessage by mutableStateOf("")
+    private var balanceServices by mutableStateOf(listOf<BalanceService>())
+    private var showBalanceEditor by mutableStateOf(false)
+    private var editingBalanceServiceId by mutableStateOf<String?>(null)
+    private var balanceNameInput by mutableStateOf("")
+    private var balanceEndpointInput by mutableStateOf("")
+    private var balanceAuthMode by mutableStateOf(BalanceAuthMode.EMAIL_PASSWORD)
+    private var balanceEmailInput by mutableStateOf("")
+    private var balancePasswordInput by mutableStateOf("")
+    private var balancePasswordVisible by mutableStateOf(false)
+    private var balanceIncludeVouchers by mutableStateOf(false)
+    private var balanceIncludeGranted by mutableStateOf(true)
+    private var balanceEditorError by mutableStateOf("")
+    private var balanceEditorBusy by mutableStateOf(false)
+    private var balanceRefreshingId by mutableStateOf<String?>(null)
+    private var deletingBalanceServiceId by mutableStateOf<String?>(null)
+    private var pendingSiliconFlowLoginServiceId: String? = null
+    private var showCodexQuota by mutableStateOf(true)
+    private var showHealthStatus by mutableStateOf(true)
     private var receiverRegistered = false
 
     private val quotaUri = "content://org.orynnx.codexquota/quota".toUri()
@@ -94,6 +117,9 @@ class MainActivity : ComponentActivity() {
         object : ContentObserver(Handler(mainLooper)) {
             override fun onChange(selfChange: Boolean) {
                 state = QuotaRepository.current(this@MainActivity)
+                balanceServices = StandardBalanceRepository.list(this@MainActivity)
+                showCodexQuota = DashboardPreferences.showCodex(this@MainActivity)
+                showHealthStatus = DashboardPreferences.showHealth(this@MainActivity)
             }
         }
     }
@@ -111,6 +137,38 @@ class MainActivity : ComponentActivity() {
             message = "未授予通知权限；智能后台刷新仍然可用"
         }
     }
+    private val siliconFlowLoginLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val serviceId = pendingSiliconFlowLoginServiceId
+        pendingSiliconFlowLoginServiceId = null
+        if (serviceId == null) return@registerForActivityResult
+        if (result.resultCode != android.app.Activity.RESULT_OK) {
+            message = "已取消 SiliconFlow 登录"
+            return@registerForActivityResult
+        }
+        val data = result.data
+        val subjectId = data?.getStringExtra(SiliconFlowLoginActivity.EXTRA_SUBJECT_ID).orEmpty()
+        val sessionToken = data?.getStringExtra(SiliconFlowLoginActivity.EXTRA_SESSION_TOKEN).orEmpty()
+        if (subjectId.isBlank() || sessionToken.isBlank()) {
+            message = "登录完成，但未能从控制台页面获取会话信息"
+            return@registerForActivityResult
+        }
+        message = "正在验证 SiliconFlow 控制台…"
+        Thread {
+            val connection = runCatching {
+                StandardBalanceRepository.connectSiliconFlowConsole(this, serviceId, subjectId, sessionToken)
+            }
+            runOnUiThread {
+                connection.onSuccess {
+                    loadBalanceServices()
+                    prepareLiveSync()
+                    message = "${it.name} 已连接"
+                }.onFailure {
+                    loadBalanceServices()
+                    message = "SiliconFlow 登录失败：${it.message ?: "请重试"}"
+                }
+            }
+        }.start()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,22 +177,28 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
         state = QuotaRepository.current(this)
+        balanceServices = StandardBalanceRepository.list(this)
+        showCodexQuota = DashboardPreferences.showCodex(this)
+        showHealthStatus = DashboardPreferences.showHealth(this)
         backgroundEnabled = QuotaRepository.backgroundEnabled(this)
         notificationSyncEnabled = QuotaRepository.notificationSyncEnabled(this)
         serviceRunning = QuotaForegroundService.running
-        if (QuotaRepository.signedIn(this) && backgroundEnabled) prepareLiveSync()
+        if ((QuotaRepository.signedIn(this) || StandardBalanceRepository.hasAuthenticatedService(this)) && backgroundEnabled) prepareLiveSync()
 
         setContent {
             OuterViewQuotaTheme {
                 val signedIn = QuotaRepository.signedIn(this@MainActivity)
+                val hasBalanceService = balanceServices.isNotEmpty()
                 BackHandler(showSettings) { showSettings = false }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    Crossfade(targetState = signedIn, label = "auth-root") { authorized ->
+                    Crossfade(targetState = signedIn || hasBalanceService || showSettings, label = "auth-root") { authorized ->
                         if (authorized) SignedInShell() else SignInScreen()
                     }
                 }
                 if (showSignOutConfirm) SignOutDialog()
                 if (showNotificationEducation) NotificationEducationDialog()
+                if (showBalanceEditor) BalanceServiceEditorDialog()
+                if (deletingBalanceServiceId != null) DeleteBalanceServiceDialog()
             }
         }
     }
@@ -142,6 +206,9 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         state = QuotaRepository.current(this)
+        balanceServices = StandardBalanceRepository.list(this)
+        showCodexQuota = DashboardPreferences.showCodex(this)
+        showHealthStatus = DashboardPreferences.showHealth(this)
         backgroundEnabled = QuotaRepository.backgroundEnabled(this)
         notificationSyncEnabled = QuotaRepository.notificationSyncEnabled(this)
         serviceRunning = QuotaForegroundService.running
@@ -180,7 +247,15 @@ class MainActivity : ComponentActivity() {
                             Spacer(Modifier.width(10.dp))
                             Column {
                                 Text("OuterView", style = MaterialTheme.typography.titleMedium)
-                                Text(if (showSettings) "SETTINGS" else "CODEX USAGE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    when {
+                                        showSettings -> "SETTINGS"
+                                        QuotaRepository.signedIn(this@MainActivity) -> "CODEX USAGE"
+                                        else -> "BALANCE SERVICES"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     },
@@ -247,6 +322,14 @@ class MainActivity : ComponentActivity() {
                 Text(if (showManualEntry) "收起高级登录" else "授权遇到问题？")
             }
             if (showManualEntry) ManualSignIn()
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { showSettings = true },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Text("配置标准余额服务")
+            }
             if (message.isNotBlank()) InlineNotice(message, Modifier.padding(top = 12.dp))
             Spacer(Modifier.height(28.dp))
             Text(
@@ -283,30 +366,197 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun DashboardScreen(modifier: Modifier = Modifier) {
+        val codexSignedIn = QuotaRepository.signedIn(this@MainActivity)
+        val showCodex = codexSignedIn && showCodexQuota
+        val visibleBalanceServices = balanceServices.filter { it.visible }
         Column(
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("用量", style = MaterialTheme.typography.headlineMedium)
-                    Text(planLabel(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (showCodex) "用量" else "余额服务", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        if (showCodex) planLabel() else "已选择的服务",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                StatusPill()
+                if (showCodex) StatusPill() else BalanceStatusPill()
             }
 
-            when {
-                state.hasWeekly -> {
-                    QuotaHero("本周剩余", state.weeklyRemaining, state.weeklyReset, state.weeklyResetAtEpoch)
-                    if (state.hasFiveHour) QuotaCompact("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
+            if (showCodex) {
+                when {
+                    state.hasWeekly -> {
+                        QuotaHero("本周剩余", state.weeklyRemaining, state.weeklyReset, state.weeklyResetAtEpoch)
+                        if (state.hasFiveHour) QuotaCompact("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
+                    }
+                    state.hasFiveHour -> QuotaHero("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
+                    else -> EmptyQuotaState()
                 }
-                state.hasFiveHour -> QuotaHero("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
-                else -> EmptyQuotaState()
+                if (showHealthStatus) SyncHealthRow()
             }
 
-            SyncHealthRow()
+            if (visibleBalanceServices.isNotEmpty()) {
+                BalanceServiceCards(visibleBalanceServices, manage = false)
+            } else if (!showCodex) {
+                NoVisibleQuotaState()
+            }
             if (message.isNotBlank() && message != state.status) InlineNotice(message)
             Spacer(Modifier.height(20.dp))
+        }
+    }
+
+    @Composable
+    private fun NoVisibleQuotaState() {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("没有选择要显示的配额", style = MaterialTheme.typography.titleMedium)
+                Text("可以在设置 → 显示内容中重新打开需要的卡片。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+
+    @Composable
+    private fun BalanceStatusPill() {
+        val active = balanceServices.any { it.visible && it.health == BalanceHealth.FRESH }
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+            Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(6.dp).background(if (active) QuotaColors.Success else QuotaColors.Warning, CircleShape))
+                Spacer(Modifier.width(7.dp))
+                Text(if (active) "已连接" else "需检查", style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+
+    @Composable
+    private fun BalanceServiceCards(services: List<BalanceService>, manage: Boolean, showTitle: Boolean = true) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (showTitle) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("余额服务", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    if (!manage) Text("${services.size} 个", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            services.forEachIndexed { index, service ->
+                BalanceServiceCard(service, manage, index, services.size)
+            }
+        }
+    }
+
+    @Composable
+    private fun BalanceServiceCard(service: BalanceService, manage: Boolean, index: Int = 0, total: Int = 1) {
+        val statusColor = when (service.health) {
+            BalanceHealth.FRESH -> QuotaColors.Success
+            BalanceHealth.CACHED -> QuotaColors.Warning
+            BalanceHealth.AUTH_REQUIRED, BalanceHealth.ERROR -> QuotaColors.Error
+            BalanceHealth.NOT_CONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(statusColor, CircleShape))
+                    Spacer(Modifier.width(9.dp))
+                    Text(service.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                }
+                Text(service.endpoint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (manage) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("启用此余额服务", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = service.visible,
+                            onCheckedChange = { checked ->
+                                StandardBalanceRepository.setVisible(this@MainActivity, service.id, checked)
+                                loadBalanceServices()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
+                                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                uncheckedBorderColor = MaterialTheme.colorScheme.outline,
+                            ),
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text("显示位置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        BalanceSurface.values().forEach { surface ->
+                            val selected = service.visible && surface in service.displaySurfaces
+                            Surface(
+                                modifier = Modifier.weight(1f).height(34.dp).clickable {
+                                    StandardBalanceRepository.setSurfaceEnabled(this@MainActivity, service.id, surface, !selected)
+                                    loadBalanceServices()
+                                },
+                                shape = MaterialTheme.shapes.small,
+                                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        surface.shortLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        "外部组件按此顺序显示；关闭总开关后不会出现在任何卡片中",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(displayBalance(service), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                    Text(service.status, style = MaterialTheme.typography.bodySmall, color = statusColor)
+                }
+                if (service.detail.isNotBlank()) {
+                    Text(service.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (service.updatedAt != "--") {
+                    Text("最后更新 ${service.updatedAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    if (manage) {
+                        TextButton(
+                            onClick = {
+                                StandardBalanceRepository.move(this@MainActivity, service.id, -1)
+                                loadBalanceServices()
+                            },
+                            enabled = index > 0,
+                        ) { Text("上移") }
+                        TextButton(
+                            onClick = {
+                                StandardBalanceRepository.move(this@MainActivity, service.id, 1)
+                                loadBalanceServices()
+                            },
+                            enabled = index + 1 < total,
+                        ) { Text("下移") }
+                    }
+                    TextButton(
+                        onClick = { refreshBalanceService(service.id) },
+                        enabled = balanceRefreshingId == null,
+                    ) { Text(if (balanceRefreshingId == service.id) "更新中…" else "刷新") }
+                    if (manage) {
+                        TextButton(onClick = { openBalanceEditor(service.id) }) { Text("编辑") }
+                        TextButton(onClick = { deletingBalanceServiceId = service.id }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                    }
+                }
+            }
         }
     }
 
@@ -436,6 +686,28 @@ class MainActivity : ComponentActivity() {
         ) {
             Text("设置", style = MaterialTheme.typography.headlineMedium)
 
+            SettingsSection("显示内容") {
+                SettingsSwitchRow(
+                    title = "显示 Codex 配额",
+                    subtitle = if (showCodexQuota) "首页显示 OpenAI Codex 配额卡片" else "已隐藏；不会停止 Codex 刷新",
+                    checked = showCodexQuota,
+                    onCheckedChange = { enabled ->
+                        showCodexQuota = enabled
+                        DashboardPreferences.setShowCodex(this@MainActivity, enabled)
+                    },
+                )
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = "显示健康状态",
+                    subtitle = if (showHealthStatus) "显示首页底部的同步健康状态" else "已隐藏；不会停止后台同步",
+                    checked = showHealthStatus,
+                    onCheckedChange = { enabled ->
+                        showHealthStatus = enabled
+                        DashboardPreferences.setShowHealth(this@MainActivity, enabled)
+                    },
+                )
+            }
+
             SettingsSection("同步") {
                 SettingsSwitchRow(
                     title = "持续同步",
@@ -518,14 +790,59 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            SettingsSection("账户") {
+            SettingsSection("余额服务") {
+                Text(
+                    "每项余额服务可单独选择显示位置；上移或下移会改变各组件中的卡片顺序。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                )
+                if (balanceServices.isNotEmpty()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        BalanceServiceCards(balanceServices, manage = true, showTitle = false)
+                    }
+                    SettingsDivider()
+                }
                 SettingsActionRow(
-                    icon = { BrandMark(24.dp) },
-                    title = planLabel(),
-                    subtitle = "OpenAI 账户已授权",
-                    onClick = ::beginOAuth,
+                    icon = { Text("+", style = MaterialTheme.typography.titleLarge) },
+                    title = "添加标准余额服务",
+                    subtitle = "配置名称、Endpoint 和邮箱密码",
+                    onClick = { openBalanceEditor(null) },
                 )
                 SettingsDivider()
+                SettingsActionRow(
+                    icon = { Text("D", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+                    title = "添加 DeepSeek 余额",
+                    subtitle = "API Key · 读取官方账户余额",
+                    onClick = { openBalanceEditor(null, BalanceAuthMode.DEEPSEEK_API_KEY) },
+                )
+                SettingsDivider()
+                SettingsActionRow(
+                    icon = { Text("S", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+                    title = "添加 SiliconFlow 控制台余额",
+                    subtitle = "内置浏览器登录 · 自动读取控制台钱包",
+                    onClick = { openBalanceEditor(null, BalanceAuthMode.SILICONFLOW_CONSOLE) },
+                )
+            }
+
+            SettingsSection("账户") {
+                if (QuotaRepository.signedIn(this@MainActivity)) {
+                    SettingsActionRow(
+                        icon = { BrandMark(24.dp) },
+                        title = planLabel(),
+                        subtitle = "OpenAI 账户已授权",
+                        onClick = ::beginOAuth,
+                    )
+                    SettingsDivider()
+                } else {
+                    SettingsActionRow(
+                        icon = { BrandMark(24.dp) },
+                        title = "OpenAI Codex",
+                        subtitle = "未连接；点击开始授权",
+                        onClick = ::beginOAuth,
+                    )
+                    SettingsDivider()
+                }
                 SettingsActionRow(
                     icon = { Icon(painterResource(R.drawable.ic_shield), null) },
                     title = "隐私与凭证",
@@ -545,8 +862,10 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            TextButton(onClick = { showSignOutConfirm = true }, modifier = Modifier.fillMaxWidth()) {
-                Text("退出登录", color = MaterialTheme.colorScheme.error)
+            if (QuotaRepository.signedIn(this@MainActivity)) {
+                TextButton(onClick = { showSignOutConfirm = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("退出 OpenAI 登录", color = MaterialTheme.colorScheme.error)
+                }
             }
             Text(
                 "OuterView 与 OpenAI 无隶属或赞助关系。Codex 与 OpenAI 是其各自权利人的商标。",
@@ -555,6 +874,199 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.padding(bottom = 24.dp),
             )
         }
+    }
+
+    @Composable
+    private fun BalanceServiceEditorDialog() {
+        AlertDialog(
+            onDismissRequest = { if (!balanceEditorBusy) closeBalanceEditor() },
+            title = { Text(if (editingBalanceServiceId == null) "添加余额服务" else "编辑余额服务") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = balanceNameInput,
+                        onValueChange = { balanceNameInput = it; balanceEditorError = "" },
+                        label = { Text("名称") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = balanceEndpointInput,
+                        onValueChange = { balanceEndpointInput = it; balanceEditorError = "" },
+                        label = { Text("Endpoint（API 根地址）") },
+                        placeholder = { Text("https://example.com/api/v1") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    when (balanceAuthMode) {
+                        BalanceAuthMode.SILICONFLOW_CONSOLE -> {
+                            Text("登录方式：内置浏览器", style = MaterialTheme.typography.labelLarge)
+                            Text(
+                                "保存后会打开 SiliconFlow 控制台。请在页面内完成登录，应用会自动读取登录状态并返回。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        BalanceAuthMode.EMAIL_PASSWORD -> {
+                            Text("登录方式：邮箱密码", style = MaterialTheme.typography.labelLarge)
+                        }
+                        BalanceAuthMode.API_KEY -> {
+                            Text("旧版 API Key 服务", style = MaterialTheme.typography.labelLarge)
+                            Text(
+                                "此方式仅为兼容旧配置；新增 SiliconFlow 请使用控制台登录。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        BalanceAuthMode.DEEPSEEK_API_KEY -> {
+                            Text("登录方式：API Key", style = MaterialTheme.typography.labelLarge)
+                            Text(
+                                "读取 DeepSeek 官方 API 余额；API Key 会使用 Android Keystore 加密保存。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) {
+                        OutlinedTextField(
+                            value = balanceEmailInput,
+                            onValueChange = { balanceEmailInput = it; balanceEditorError = "" },
+                            label = { Text("邮箱") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    if (balanceAuthMode != BalanceAuthMode.SILICONFLOW_CONSOLE) {
+                        OutlinedTextField(
+                            value = balancePasswordInput,
+                            onValueChange = { balancePasswordInput = it; balanceEditorError = "" },
+                            label = { Text(if (balanceAuthMode == BalanceAuthMode.API_KEY || balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) "API Key" else "密码") },
+                            placeholder = {
+                                if (editingBalanceServiceId != null) {
+                                    Text(if (balanceAuthMode == BalanceAuthMode.API_KEY || balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) "已保存 API Key；可直接修改" else "已保存密码；可直接修改")
+                                }
+                            },
+                            visualTransformation = if (balancePasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { balancePasswordVisible = !balancePasswordVisible }) {
+                                    Icon(
+                                        painterResource(if (balancePasswordVisible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
+                                        contentDescription = if (balancePasswordVisible) "隐藏凭据" else "显示凭据",
+                                    )
+                                }
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("把代金券计入余额", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    if (balanceIncludeVouchers) "会把可用代金券剩余额度一并累加" else "只显示控制台现金余额",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = balanceIncludeVouchers,
+                                onCheckedChange = { balanceIncludeVouchers = it; balanceEditorError = "" },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
+                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    uncheckedBorderColor = MaterialTheme.colorScheme.outline,
+                                ),
+                            )
+                        }
+                    }
+                    if (balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("把赠送余额计入显示", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    if (balanceIncludeGranted) "显示总余额（包含赠送余额）" else "只显示充值余额",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = balanceIncludeGranted,
+                                onCheckedChange = { balanceIncludeGranted = it; balanceEditorError = "" },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    checkedBorderColor = MaterialTheme.colorScheme.primary,
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
+                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    uncheckedBorderColor = MaterialTheme.colorScheme.outline,
+                                ),
+                            )
+                        }
+                    }
+                    if (balanceEditorError.isNotBlank()) {
+                        Text(
+                            balanceEditorError,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Text(
+                        when (balanceAuthMode) {
+                            BalanceAuthMode.API_KEY -> "API Key 模式读取 API 余额 data.totalBalance。Endpoint 建议填写完整的 https://api.siliconflow.cn/v1；API Key 会使用 Android Keystore 加密保存。"
+                            BalanceAuthMode.DEEPSEEK_API_KEY -> "DeepSeek 使用 GET /user/balance。Endpoint 建议填写 https://api.deepseek.com；API Key 会使用 Android Keystore 加密保存。"
+                            BalanceAuthMode.SILICONFLOW_CONSOLE -> "控制台模式由内置浏览器完成登录，自动读取 /walletd-server 的网页余额；打开上面的开关后，还会读取 stage=3 代金券并按剩余额度累加。"
+                            BalanceAuthMode.EMAIL_PASSWORD -> "兼容标准接口的 Endpoint 建议填写完整的 https://…/api/v1。应用会自动请求 /auth/login、/auth/refresh 和 /user/profile。邮箱和密码会使用 Android Keystore 加密保存。"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = ::saveBalanceService,
+                    enabled = !balanceEditorBusy && balanceNameInput.isNotBlank() && balanceEndpointInput.isNotBlank(),
+                ) {
+                    Text(
+                        when {
+                            balanceEditorBusy -> "连接中…"
+                            balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE -> "保存并登录"
+                            else -> "保存"
+                        },
+                    )
+                }
+            },
+            dismissButton = { TextButton(onClick = ::closeBalanceEditor, enabled = !balanceEditorBusy) { Text("取消") } },
+        )
+    }
+
+    @Composable
+    private fun DeleteBalanceServiceDialog() {
+        val service = balanceServices.firstOrNull { it.id == deletingBalanceServiceId }
+        AlertDialog(
+            onDismissRequest = { deletingBalanceServiceId = null },
+            title = { Text("删除余额服务？") },
+            text = { Text("将删除 ${service?.name ?: "这个服务"} 的配置、缓存和本机凭证。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deletingBalanceServiceId?.let { StandardBalanceRepository.delete(this@MainActivity, it) }
+                    deletingBalanceServiceId = null
+                    loadBalanceServices()
+                    message = "余额服务已删除"
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deletingBalanceServiceId = null }) { Text("取消") } },
+        )
     }
 
     @Composable
@@ -576,7 +1088,18 @@ class MainActivity : ComponentActivity() {
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    checkedBorderColor = MaterialTheme.colorScheme.primary,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    uncheckedBorderColor = MaterialTheme.colorScheme.outline,
+                ),
+            )
         }
     }
 
@@ -655,8 +1178,8 @@ class MainActivity : ComponentActivity() {
     private fun SignOutDialog() {
         AlertDialog(
             onDismissRequest = { showSignOutConfirm = false },
-            title = { Text("退出 OuterView Quota？") },
-            text = { Text("这会删除本机加密保存的 OAuth 凭证，并停止自动同步。") },
+            title = { Text("退出 OpenAI 登录？") },
+            text = { Text("这会删除本机加密保存的 OpenAI OAuth 凭证。已配置的标准余额服务不会受影响。") },
             confirmButton = {
                 TextButton(onClick = {
                     QuotaRepository.clear(this@MainActivity)
@@ -681,8 +1204,13 @@ class MainActivity : ComponentActivity() {
 
     private fun planLabel(): String = state.plan.takeIf(String::isNotBlank)?.replaceFirstChar { it.uppercase() } ?: "Codex plan"
 
+    private fun displayBalance(service: BalanceService): String {
+        return balanceDisplayValue(service)
+    }
+
     private fun prepareLiveSync(forceEducation: Boolean = false) {
-        if (!QuotaRepository.signedIn(this) || !backgroundEnabled) return
+        val hasAnyAuthenticatedService = QuotaRepository.signedIn(this) || StandardBalanceRepository.hasAuthenticatedService(this)
+        if (!hasAnyAuthenticatedService || !backgroundEnabled) return
         QuotaRefreshScheduler.schedule(this)
         if (!notificationSyncEnabled) {
             QuotaForegroundService.stop(this)
@@ -725,6 +1253,150 @@ class MainActivity : ComponentActivity() {
         } else {
             "Launcher 未接受添加请求。请长按桌面，从小组件列表手动添加。"
         }
+    }
+
+    private fun loadBalanceServices() {
+        balanceServices = StandardBalanceRepository.list(this)
+    }
+
+    private fun openBalanceEditor(id: String?, defaultAuthMode: BalanceAuthMode? = null) {
+        editingBalanceServiceId = id
+        val service = id?.let { value -> balanceServices.firstOrNull { it.id == value } }
+        val credentials = id?.let { value -> runCatching { StandardBalanceRepository.credentials(this, value) }.getOrNull() }
+        balanceAuthMode = defaultAuthMode ?: service?.authMode ?: BalanceAuthMode.EMAIL_PASSWORD
+        balanceNameInput = service?.name ?: when (balanceAuthMode) {
+            BalanceAuthMode.API_KEY -> "SiliconFlow API"
+            BalanceAuthMode.DEEPSEEK_API_KEY -> "DeepSeek"
+            BalanceAuthMode.SILICONFLOW_CONSOLE -> "SiliconFlow 控制台"
+            BalanceAuthMode.EMAIL_PASSWORD -> ""
+        }
+        balanceEndpointInput = service?.endpoint ?: when (balanceAuthMode) {
+            BalanceAuthMode.API_KEY -> "https://api.siliconflow.cn/v1"
+            BalanceAuthMode.DEEPSEEK_API_KEY -> "https://api.deepseek.com"
+            BalanceAuthMode.SILICONFLOW_CONSOLE -> "https://cloud.siliconflow.cn"
+            BalanceAuthMode.EMAIL_PASSWORD -> ""
+        }
+        balanceEmailInput = if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) {
+            credentials?.account ?: service?.email.orEmpty()
+        } else {
+            ""
+        }
+        balancePasswordInput = if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) "" else credentials?.secret.orEmpty()
+        balancePasswordVisible = false
+        balanceIncludeVouchers = if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) service?.includeVouchers == true else false
+        balanceIncludeGranted = if (balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) service?.includeGrantedBalance != false else true
+        balanceEditorError = ""
+        balanceEditorBusy = false
+        showBalanceEditor = true
+    }
+
+    private fun closeBalanceEditor() {
+        if (balanceEditorBusy) return
+        showBalanceEditor = false
+        editingBalanceServiceId = null
+        balanceNameInput = ""
+        balanceEndpointInput = ""
+        balanceAuthMode = BalanceAuthMode.EMAIL_PASSWORD
+        balanceEmailInput = ""
+        balancePasswordInput = ""
+        balancePasswordVisible = false
+        balanceIncludeVouchers = false
+        balanceIncludeGranted = true
+        balanceEditorError = ""
+    }
+
+    private fun saveBalanceService() {
+        val name = balanceNameInput.trim()
+        val endpoint = balanceEndpointInput.trim()
+        val account = if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) balanceEmailInput.trim() else ""
+        val secret = balancePasswordInput
+        val editing = editingBalanceServiceId
+        val existing = editing?.let { id -> balanceServices.firstOrNull { it.id == id } }
+        balanceEditorError = ""
+        val endpointChanged = existing != null && existing.endpoint.trimEnd('/') != endpoint.trimEnd('/')
+        val modeChanged = existing != null && existing.authMode != balanceAuthMode
+        val needsLogin = existing == null || endpointChanged || modeChanged || existing.health == BalanceHealth.NOT_CONNECTED || existing.health == BalanceHealth.AUTH_REQUIRED
+        if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD && account.isBlank() && needsLogin) {
+            balanceEditorError = "请输入邮箱"
+            return
+        }
+        if (balanceAuthMode != BalanceAuthMode.SILICONFLOW_CONSOLE && secret.isBlank() && needsLogin) {
+            balanceEditorError = when (balanceAuthMode) {
+                BalanceAuthMode.API_KEY -> "请输入 API Key"
+                BalanceAuthMode.DEEPSEEK_API_KEY -> "请输入 DeepSeek API Key"
+                BalanceAuthMode.SILICONFLOW_CONSOLE -> "请输入 session-token"
+                BalanceAuthMode.EMAIL_PASSWORD -> "请输入密码"
+            }
+            return
+        }
+        val serviceId = runCatching {
+            StandardBalanceRepository.saveDefinition(this, editing, name, endpoint, balanceAuthMode, balanceIncludeVouchers, balanceIncludeGranted)
+        }.getOrElse {
+            balanceEditorError = it.message ?: "Endpoint 无效"
+            return
+        }
+        loadBalanceServices()
+        if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) {
+            closeBalanceEditor()
+            startSiliconFlowLogin(serviceId)
+            return
+        }
+        if ((balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD && account.isBlank()) || secret.isBlank()) {
+            closeBalanceEditor()
+            message = "余额服务配置已保存"
+            return
+        }
+        balanceEditorBusy = true
+        val secretChars = secret.toCharArray()
+        balancePasswordInput = ""
+        message = "正在连接 ${name}…"
+        Thread {
+            val result = try {
+                runCatching { StandardBalanceRepository.login(this, serviceId, account, secretChars) }
+            } finally {
+                secretChars.fill('\u0000')
+            }
+            runOnUiThread {
+                balanceEditorBusy = false
+                result.onSuccess {
+                    closeBalanceEditor()
+                    loadBalanceServices()
+                    prepareLiveSync()
+                    message = "${it.name} 已连接"
+                }.onFailure {
+                    loadBalanceServices()
+                    balancePasswordInput = secret
+                    balanceEditorError = "登录失败：${it.message ?: "请检查邮箱、密码和 Endpoint"}"
+                    message = balanceEditorError
+                }
+            }
+        }.start()
+    }
+
+    private fun startSiliconFlowLogin(serviceId: String) {
+        pendingSiliconFlowLoginServiceId = serviceId
+        message = "正在打开 SiliconFlow 内置登录页…"
+        siliconFlowLoginLauncher.launch(Intent(this, SiliconFlowLoginActivity::class.java))
+    }
+
+    private fun refreshBalanceService(id: String) {
+        if (balanceRefreshingId != null) return
+        balanceRefreshingId = id
+        Thread {
+            val result = runCatching { StandardBalanceRepository.refresh(this, id, force = true) }
+            runOnUiThread {
+                balanceRefreshingId = null
+                loadBalanceServices()
+                result.onSuccess {
+                    message = when (it.health) {
+                        BalanceHealth.FRESH -> "${it.name} 已更新"
+                        BalanceHealth.CACHED -> "${it.name} 暂时无法更新，显示缓存"
+                        BalanceHealth.AUTH_REQUIRED -> "${it.name} 需要重新登录"
+                        else -> "${it.name} 更新失败"
+                    }
+                }.onFailure { message = "更新失败：${it.message ?: "未知错误"}" }
+            }
+        }.start()
     }
 
     private fun beginOAuth() {
@@ -796,22 +1468,30 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refresh() {
-        if (refreshing || !QuotaRepository.signedIn(this)) return
+        if (refreshing) return
+        val hasCodex = QuotaRepository.signedIn(this)
+        val hasBalanceService = StandardBalanceRepository.hasAuthenticatedService(this)
+        if (!hasCodex && !hasBalanceService) return
         refreshing = true
         message = "正在更新…"
         Thread {
-            val result = runCatching { QuotaRepository.refresh(this, force = true) }
+            val result = runCatching {
+                if (hasCodex) QuotaRepository.refresh(this, force = true)
+                StandardBalanceRepository.refreshAll(this, force = true)
+                QuotaRepository.current(this)
+            }
             runOnUiThread {
                 refreshing = false
                 result.onSuccess { next ->
                     state = next
-                    message = when (next.health) {
+                    loadBalanceServices()
+                    message = if (!hasCodex) "" else when (next.health) {
                         QuotaHealth.FRESH, QuotaHealth.EMPTY -> ""
                         QuotaHealth.CACHED -> "暂时无法更新，正在显示上次成功的数据"
                         QuotaHealth.AUTH_REQUIRED -> "授权已过期，请重新连接"
                         QuotaHealth.SIGNED_OUT -> "尚未连接"
                     }
-                    runCatching { contentResolver.notifyChange(quotaUri, null) }
+                    runCatching { QuotaDisplayContract.notifyAll(this@MainActivity) }
                 }.onFailure {
                     message = "更新失败：${it.message ?: "未知错误"}"
                 }
