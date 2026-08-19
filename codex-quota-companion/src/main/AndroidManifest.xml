@@ -28,6 +28,10 @@
             android:name=".SiliconFlowLoginActivity"
             android:exported="false"
             android:label="SiliconFlow 登录" />
+        <activity
+            android:name=".MimoLoginActivity"
+            android:exported="false"
+            android:label="MIMO 登录" />
         <!-- Deliberately exported: Xiaomi's separate rear-display MAML process reads display-only fields. -->
         <provider
             android:name=".QuotaProvider"

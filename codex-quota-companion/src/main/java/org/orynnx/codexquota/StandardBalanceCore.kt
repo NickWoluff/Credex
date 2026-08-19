@@ -22,7 +22,16 @@ import javax.crypto.spec.GCMParameterSpec
 /** The health of one user-configured standard balance service. */
 enum class BalanceHealth { NOT_CONNECTED, FRESH, CACHED, AUTH_REQUIRED, ERROR }
 
-enum class BalanceAuthMode { EMAIL_PASSWORD, API_KEY, DEEPSEEK_API_KEY, SILICONFLOW_CONSOLE }
+enum class BalanceAuthMode {
+    EMAIL_PASSWORD,
+    API_KEY,
+    DEEPSEEK_API_KEY,
+    SILICONFLOW_CONSOLE,
+    MIMO_BALANCE,
+    MIMO_TOKEN_PLAN,
+}
+
+enum class BalanceDisplayKind { AMOUNT, TOKEN_PLAN }
 
 /** A display host that can independently opt a balance service in or out. */
 enum class BalanceSurface(val shortLabel: String, val label: String) {
@@ -49,6 +58,10 @@ data class BalanceService(
     val displaySurfaces: Set<BalanceSurface> = BalanceSurface.values().toSet(),
     val includeVouchers: Boolean = false,
     val includeGrantedBalance: Boolean = true,
+    val displayKind: BalanceDisplayKind = BalanceDisplayKind.AMOUNT,
+    val used: String = "",
+    val total: String = "",
+    val resetAt: String = "",
 )
 
 /** Display-only preferences. They never stop network refresh or delete credentials. */
@@ -88,6 +101,10 @@ private data class StoredBalanceService(
     val displaySurfaces: Set<BalanceSurface> = BalanceSurface.values().toSet(),
     val includeVouchers: Boolean = false,
     val includeGrantedBalance: Boolean = true,
+    val displayKind: BalanceDisplayKind = BalanceDisplayKind.AMOUNT,
+    val used: String = "",
+    val total: String = "",
+    val resetAt: String = "",
 ) {
     fun public() = BalanceService(
         id = id,
@@ -105,6 +122,10 @@ private data class StoredBalanceService(
         displaySurfaces = displaySurfaces,
         includeVouchers = includeVouchers,
         includeGrantedBalance = includeGrantedBalance,
+        displayKind = displayKind,
+        used = used,
+        total = total,
+        resetAt = resetAt,
     )
 
     fun json(): JSONObject = JSONObject().apply {
@@ -130,6 +151,10 @@ private data class StoredBalanceService(
         put("display_surfaces", JSONArray().apply { displaySurfaces.forEach { put(it.name) } })
         put("include_vouchers", includeVouchers)
         put("include_granted_balance", includeGrantedBalance)
+        put("display_kind", displayKind.name)
+        put("used", used)
+        put("total", total)
+        put("reset_at", resetAt)
     }
 
     companion object {
@@ -161,6 +186,11 @@ private data class StoredBalanceService(
                 displaySurfaces = readDisplaySurfaces(json),
                 includeVouchers = json.optBoolean("include_vouchers", false),
                 includeGrantedBalance = json.optBoolean("include_granted_balance", true),
+                displayKind = runCatching { BalanceDisplayKind.valueOf(json.optString("display_kind")) }
+                    .getOrDefault(BalanceDisplayKind.AMOUNT),
+                used = json.optString("used"),
+                total = json.optString("total"),
+                resetAt = json.optString("reset_at"),
             )
         }
 
@@ -239,7 +269,8 @@ object StandardBalanceRepository {
     fun hasAuthenticatedService(context: Context): Boolean = stored(context).any {
         it.accessToken.isNotBlank() ||
             (it.email.isNotBlank() && it.password.isNotBlank()) ||
-            (it.subjectId.isNotBlank() && it.sessionToken.isNotBlank())
+            (it.subjectId.isNotBlank() && it.sessionToken.isNotBlank()) ||
+            ((it.authMode == BalanceAuthMode.MIMO_BALANCE || it.authMode == BalanceAuthMode.MIMO_TOKEN_PLAN) && it.sessionToken.isNotBlank())
     }
 
     data class Credentials(val account: String, val secret: String)
@@ -250,6 +281,7 @@ object StandardBalanceRepository {
             BalanceAuthMode.API_KEY -> Credentials("", service.accessToken)
             BalanceAuthMode.DEEPSEEK_API_KEY -> Credentials("", service.accessToken)
             BalanceAuthMode.SILICONFLOW_CONSOLE -> Credentials(service.subjectId, service.sessionToken)
+            BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> Credentials("", service.sessionToken)
             BalanceAuthMode.EMAIL_PASSWORD -> Credentials(service.email, service.password)
         }
     }
@@ -312,6 +344,10 @@ object StandardBalanceRepository {
                 sessionToken = "",
                 expiresAtMillis = 0L,
                 balance = "--",
+                displayKind = if (authMode == BalanceAuthMode.MIMO_TOKEN_PLAN) BalanceDisplayKind.TOKEN_PLAN else BalanceDisplayKind.AMOUNT,
+                used = "",
+                total = "",
+                resetAt = "",
                 updatedAt = "--",
                 status = "需要重新登录",
                 health = BalanceHealth.NOT_CONNECTED,
@@ -337,6 +373,7 @@ object StandardBalanceRepository {
             BalanceAuthMode.API_KEY -> loginApiKey(context, service, secret)
             BalanceAuthMode.DEEPSEEK_API_KEY -> loginDeepSeekApiKey(context, service, secret)
             BalanceAuthMode.SILICONFLOW_CONSOLE -> loginSiliconFlowConsole(context, service, account, secret)
+            BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> loginMimo(context, service, secret)
             BalanceAuthMode.EMAIL_PASSWORD -> loginEmailPassword(context, service, account, secret)
         }
     }
@@ -353,6 +390,19 @@ object StandardBalanceRepository {
             val service = requireStored(context, id)
             check(service.authMode == BalanceAuthMode.SILICONFLOW_CONSOLE) { "不是 SiliconFlow 控制台服务" }
             login(context, id, subjectId, secret)
+        } finally {
+            secret.fill('\u0000')
+        }
+    }
+
+    fun connectMimo(context: Context, id: String, sessionToken: String): BalanceService {
+        val secret = sessionToken.toCharArray()
+        return try {
+            val service = requireStored(context, id)
+            check(service.authMode == BalanceAuthMode.MIMO_BALANCE || service.authMode == BalanceAuthMode.MIMO_TOKEN_PLAN) {
+                "不是 MIMO 服务"
+            }
+            loginMimo(context, service, secret)
         } finally {
             secret.fill('\u0000')
         }
@@ -510,6 +560,98 @@ object StandardBalanceRepository {
         return next.public()
     }
 
+    private fun loginMimo(
+        context: Context,
+        service: StoredBalanceService,
+        sessionToken: CharArray,
+    ): BalanceService {
+        val cookie = normalizeMimoCookie(String(sessionToken))
+        check(cookie.isNotBlank()) { "没有获取到 MIMO 登录会话" }
+        val withCredentials = service.copy(
+            sessionToken = cookie,
+            accessToken = "",
+            refreshToken = "",
+            subjectId = "",
+            expiresAtMillis = Long.MAX_VALUE,
+            displayKind = if (service.authMode == BalanceAuthMode.MIMO_TOKEN_PLAN) BalanceDisplayKind.TOKEN_PLAN else BalanceDisplayKind.AMOUNT,
+        )
+        replace(context, withCredentials)
+        val next = fetchMimo(withCredentials)
+        replace(context, next)
+        QuotaRefreshScheduler.schedule(context)
+        notifyChanged(context)
+        return next.public()
+    }
+
+    private fun refreshMimo(context: Context, initial: StoredBalanceService, force: Boolean): BalanceService {
+        val now = System.currentTimeMillis()
+        if (!force && now - initial.lastAttemptAtMillis < MIN_REFRESH_MILLIS) return initial.public()
+        replace(context, initial.copy(lastAttemptAtMillis = now))
+        return try {
+            val current = requireStored(context, initial.id)
+            val success = fetchMimo(current)
+            replace(context, success)
+            notifyChanged(context)
+            success.public()
+        } catch (error: Exception) {
+            val latest = requireStored(context, initial.id)
+            val authRequired = error is BalanceHttpException && error.statusCode in setOf(401, 403)
+            val failed = latest.copy(
+                status = if (authRequired) "MIMO 会话已过期" else "暂时无法更新",
+                health = if (authRequired) BalanceHealth.AUTH_REQUIRED else if (latest.balance != "--") BalanceHealth.CACHED else BalanceHealth.ERROR,
+            )
+            replace(context, failed)
+            notifyChanged(context)
+            failed.public()
+        }
+    }
+
+    private fun fetchMimo(service: StoredBalanceService): StoredBalanceService {
+        val headers = mimoHeaders(service.sessionToken)
+        return if (service.authMode == BalanceAuthMode.MIMO_BALANCE) {
+            val data = unwrap(requestJson(mimoBalanceUrl(service.endpoint), "GET", null, null, headers))
+            val snapshot = readMimoPayAsYouGo(data)
+            service.copy(
+                balance = formatBalance(snapshot.cash),
+                currency = "CNY",
+                detail = buildString {
+                    append("现金 ¥").append(formatBalance(snapshot.cash))
+                    snapshot.gift?.let { append(" · 赠送 ¥").append(formatBalance(it)) }
+                },
+                displayKind = BalanceDisplayKind.AMOUNT,
+                used = "",
+                total = "",
+                resetAt = "",
+                updatedAt = clock(),
+                lastAttemptAtMillis = System.currentTimeMillis(),
+                status = "MIMO 已连接",
+                health = BalanceHealth.FRESH,
+            )
+        } else {
+            val detail = unwrap(requestJson(mimoTokenPlanDetailUrl(service.endpoint), "GET", null, null, headers))
+            val usage = unwrap(requestJson(mimoTokenPlanUsageUrl(service.endpoint), "GET", null, null, headers))
+            val snapshot = readMimoTokenPlan(detail, usage)
+            service.copy(
+                balance = formatBalance(snapshot.remaining),
+                currency = "TOKEN",
+                detail = buildString {
+                    append(snapshot.plan)
+                    append(" · 剩余 ").append(formatTokenCount(snapshot.remaining))
+                    append(" / ").append(formatTokenCount(snapshot.limit)).append(" Credits")
+                    snapshot.expiresAt.takeIf { it.isNotBlank() }?.let { append(" · 有效期至 ").append(it) }
+                },
+                displayKind = BalanceDisplayKind.TOKEN_PLAN,
+                used = formatBalance(snapshot.used),
+                total = formatBalance(snapshot.limit),
+                resetAt = snapshot.expiresAt,
+                updatedAt = clock(),
+                lastAttemptAtMillis = System.currentTimeMillis(),
+                status = "MIMO Token Plan",
+                health = BalanceHealth.FRESH,
+            )
+        }
+    }
+
     fun refresh(context: Context, id: String, force: Boolean = false): BalanceService {
         val initial = requireStored(context, id)
         when (initial.authMode) {
@@ -524,6 +666,10 @@ object StandardBalanceRepository {
             BalanceAuthMode.SILICONFLOW_CONSOLE -> {
                 if (initial.subjectId.isBlank() || initial.sessionToken.isBlank()) return initial.public()
                 return refreshSiliconFlowConsole(context, initial, force)
+            }
+            BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> {
+                if (initial.sessionToken.isBlank()) return initial.public()
+                return refreshMimo(context, initial, force)
             }
             BalanceAuthMode.EMAIL_PASSWORD -> Unit
         }
@@ -945,6 +1091,29 @@ object StandardBalanceRepository {
 
     private fun consoleStatus(includeVouchers: Boolean) = if (includeVouchers) "控制台已连接 · 含代金券" else "控制台已连接"
 
+    private fun mimoHeaders(cookie: String): Map<String, String> = mapOf(
+        "Cookie" to normalizeMimoCookie(cookie),
+        "Accept-Language" to "zh-CN",
+        "x-timeZone" to ZoneId.systemDefault().id,
+    )
+
+    private fun normalizeMimoCookie(raw: String): String = raw.trim()
+        .removePrefix("Cookie:")
+        .trim()
+
+    private fun mimoBalanceUrl(endpoint: String): String = mimoApiUrl(endpoint, "/balance")
+    private fun mimoTokenPlanDetailUrl(endpoint: String): String = mimoApiUrl(endpoint, "/tokenPlan/detail")
+    private fun mimoTokenPlanUsageUrl(endpoint: String): String = mimoApiUrl(endpoint, "/tokenPlan/usage")
+
+    private fun mimoApiUrl(endpoint: String, path: String): String {
+        val normalized = endpoint.trim().trimEnd('/')
+        return if (normalized.contains("platform.xiaomimimo.com", ignoreCase = true)) {
+            "https://platform.xiaomimimo.com/api/v1$path"
+        } else {
+            join(normalized, "/api/v1$path")
+        }
+    }
+
     private fun clock() = clockFormatter.format(Instant.now())
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -981,9 +1150,79 @@ object StandardBalanceRepository {
 internal fun siliconFlowConsoleCashToYuan(raw: java.math.BigDecimal): java.math.BigDecimal =
     raw.divide(java.math.BigDecimal("1000000000000"))
 
+internal data class MimoPayAsYouGoSnapshot(
+    val cash: java.math.BigDecimal,
+    val gift: java.math.BigDecimal?,
+)
+
+internal data class MimoTokenPlanSnapshot(
+    val plan: String,
+    val used: java.math.BigDecimal,
+    val limit: java.math.BigDecimal,
+    val remaining: java.math.BigDecimal,
+    val expiresAt: String,
+)
+
+internal fun readMimoPayAsYouGo(payload: JSONObject): MimoPayAsYouGoSnapshot {
+    val data = payload.optJSONObject("data") ?: payload
+    val cash = listOf("balance", "cashBalance", "cash_balance", "availableBalance", "available_balance")
+        .asSequence().mapNotNull { amountDecimalValue(data.opt(it)) }.firstOrNull()
+        ?: error("MIMO 响应中没有余额")
+    val gift = listOf("giftBalance", "gift_balance", "赠送余额")
+        .asSequence().mapNotNull { amountDecimalValue(data.opt(it)) }.firstOrNull()
+    return MimoPayAsYouGoSnapshot(cash, gift)
+}
+
+internal fun readMimoTokenPlan(detailPayload: JSONObject, usagePayload: JSONObject): MimoTokenPlanSnapshot {
+    val detail = detailPayload.optJSONObject("data") ?: detailPayload
+    val usage = usagePayload.optJSONObject("data") ?: usagePayload
+    val pair = findTokenUsagePair(usage) ?: findTokenUsagePair(detail)
+        ?: error("MIMO Token Plan 响应中没有用量")
+    val plan = listOf("planName", "plan_name", "name", "planCode", "plan_code")
+        .asSequence().map { detail.optString(it).trim() }.firstOrNull { it.isNotBlank() } ?: "Token Plan"
+    val expires = listOf("expireTime", "expire_time", "validUntil", "valid_until", "endTime", "end_time")
+        .asSequence().map { detail.optString(it).trim() }.firstOrNull { it.isNotBlank() }.orEmpty()
+    val used = pair.first.max(java.math.BigDecimal.ZERO)
+    val limit = pair.second.max(used)
+    return MimoTokenPlanSnapshot(plan, used, limit, limit.subtract(used).max(java.math.BigDecimal.ZERO), expires)
+}
+
+private fun findTokenUsagePair(value: Any?): Pair<java.math.BigDecimal, java.math.BigDecimal>? {
+    when (value) {
+        is JSONObject -> {
+            val used = listOf("used", "usedTokens", "used_tokens", "usedCredits", "used_credits", "usage", "consumed")
+                .asSequence().mapNotNull { amountDecimalValue(value.opt(it)) }.firstOrNull()
+            val limit = listOf("limit", "total", "totalTokens", "total_tokens", "totalCredits", "total_credits", "quota", "credits")
+                .asSequence().mapNotNull { amountDecimalValue(value.opt(it)) }.firstOrNull()
+            if (used != null && limit != null && limit.signum() > 0) return used to limit
+            val keys = value.keys()
+            while (keys.hasNext()) findTokenUsagePair(value.opt(keys.next()))?.let { return it }
+        }
+        is JSONArray -> for (index in 0 until value.length()) findTokenUsagePair(value.opt(index))?.let { return it }
+    }
+    return null
+}
+
+private fun amountDecimalValue(value: Any?): java.math.BigDecimal? = when (value) {
+    is Number -> value.toString().toBigDecimalOrNull()
+    is String -> value.trim().toBigDecimalOrNull()
+    else -> null
+}
+
+private fun formatTokenCount(value: java.math.BigDecimal): String = runCatching {
+    val rounded = value.setScale(0, java.math.RoundingMode.DOWN).toBigInteger()
+    java.text.DecimalFormat("#,###").format(rounded)
+}.getOrDefault(value.stripTrailingZeros().toPlainString())
+
 /** Stable, credential-free balance text shared by the app, widgets and MAML. */
 internal fun balanceDisplayValue(service: BalanceService): String {
     if (service.balance == "--") return "--"
+    if (service.displayKind == BalanceDisplayKind.TOKEN_PLAN) {
+        val total = service.total.toBigDecimalOrNull() ?: return "--"
+        val remaining = service.balance.toBigDecimalOrNull() ?: return "--"
+        if (total.signum() <= 0) return "--"
+        return "${remaining.divide(total, 4, java.math.RoundingMode.HALF_UP).multiply(java.math.BigDecimal(100)).setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()}%"
+    }
     val amount = runCatching {
         java.math.BigDecimal(service.balance).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
     }.getOrDefault(service.balance)

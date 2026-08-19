@@ -108,6 +108,7 @@ class MainActivity : ComponentActivity() {
     private var balanceRefreshingId by mutableStateOf<String?>(null)
     private var deletingBalanceServiceId by mutableStateOf<String?>(null)
     private var pendingSiliconFlowLoginServiceId: String? = null
+    private var pendingMimoLoginServiceId: String? = null
     private var showCodexQuota by mutableStateOf(true)
     private var showHealthStatus by mutableStateOf(true)
     private var receiverRegistered = false
@@ -201,6 +202,34 @@ class MainActivity : ComponentActivity() {
                 if (deletingBalanceServiceId != null) DeleteBalanceServiceDialog()
             }
         }
+    }
+    private val mimoLoginLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val serviceId = pendingMimoLoginServiceId
+        pendingMimoLoginServiceId = null
+        if (serviceId == null) return@registerForActivityResult
+        if (result.resultCode != android.app.Activity.RESULT_OK) {
+            message = "已取消 MIMO 登录"
+            return@registerForActivityResult
+        }
+        val sessionToken = result.data?.getStringExtra(MimoLoginActivity.EXTRA_SESSION_TOKEN).orEmpty()
+        if (sessionToken.isBlank()) {
+            message = "登录完成，但未能获取 MIMO 会话信息"
+            return@registerForActivityResult
+        }
+        message = "正在验证 MIMO 控制台…"
+        Thread {
+            val connection = runCatching { StandardBalanceRepository.connectMimo(this, serviceId, sessionToken) }
+            runOnUiThread {
+                connection.onSuccess {
+                    loadBalanceServices()
+                    prepareLiveSync()
+                    message = "${it.name} 已连接"
+                }.onFailure {
+                    loadBalanceServices()
+                    message = "MIMO 登录失败：${it.message ?: "请重试"}"
+                }
+            }
+        }.start()
     }
 
     override fun onStart() {
@@ -524,6 +553,18 @@ class MainActivity : ComponentActivity() {
                     Text(displayBalance(service), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
                     Text(service.status, style = MaterialTheme.typography.bodySmall, color = statusColor)
                 }
+                if (service.displayKind == BalanceDisplayKind.TOKEN_PLAN) {
+                    val totalCredits = service.total.toBigDecimalOrNull()
+                    val remainingCredits = service.balance.toBigDecimalOrNull()
+                    if (totalCredits != null && remainingCredits != null && totalCredits.signum() > 0) {
+                        LinearProgressIndicator(
+                            progress = { remainingCredits.divide(totalCredits, 4, java.math.RoundingMode.HALF_UP).toFloat().coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
+                            color = quotaColor((remainingCredits.divide(totalCredits, 4, java.math.RoundingMode.HALF_UP) * java.math.BigDecimal(100)).toInt()),
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                    }
+                }
                 if (service.detail.isNotBlank()) {
                     Text(service.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -823,6 +864,20 @@ class MainActivity : ComponentActivity() {
                     subtitle = "内置浏览器登录 · 自动读取控制台钱包",
                     onClick = { openBalanceEditor(null, BalanceAuthMode.SILICONFLOW_CONSOLE) },
                 )
+                SettingsDivider()
+                SettingsActionRow(
+                    icon = { Text("M", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+                    title = "添加 MIMO 按量余额",
+                    subtitle = "内置浏览器登录 · 人民币现金与赠送余额",
+                    onClick = { openBalanceEditor(null, BalanceAuthMode.MIMO_BALANCE) },
+                )
+                SettingsDivider()
+                SettingsActionRow(
+                    icon = { Text("M", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+                    title = "添加 MIMO Token Plan",
+                    subtitle = "内置浏览器登录 · Credits 剩余量与有效期",
+                    onClick = { openBalanceEditor(null, BalanceAuthMode.MIMO_TOKEN_PLAN) },
+                )
             }
 
             SettingsSection("账户") {
@@ -899,10 +954,14 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxWidth(),
                     )
                     when (balanceAuthMode) {
-                        BalanceAuthMode.SILICONFLOW_CONSOLE -> {
+                        BalanceAuthMode.SILICONFLOW_CONSOLE, BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> {
                             Text("登录方式：内置浏览器", style = MaterialTheme.typography.labelLarge)
                             Text(
-                                "保存后会打开 SiliconFlow 控制台。请在页面内完成登录，应用会自动读取登录状态并返回。",
+                                if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) {
+                                    "保存后会打开 SiliconFlow 控制台。请在页面内完成登录，应用会自动读取登录状态并返回。"
+                                } else {
+                                    "保存后会打开 MIMO 控制台。请在页面内完成登录，应用只读取余额接口所需的会话状态，不使用 Token Plan 专属 API Key。"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -936,7 +995,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                    if (balanceAuthMode != BalanceAuthMode.SILICONFLOW_CONSOLE) {
+                    if (balanceAuthMode != BalanceAuthMode.SILICONFLOW_CONSOLE && balanceAuthMode != BalanceAuthMode.MIMO_BALANCE && balanceAuthMode != BalanceAuthMode.MIMO_TOKEN_PLAN) {
                         OutlinedTextField(
                             value = balancePasswordInput,
                             onValueChange = { balancePasswordInput = it; balanceEditorError = "" },
@@ -1025,6 +1084,8 @@ class MainActivity : ComponentActivity() {
                             BalanceAuthMode.API_KEY -> "API Key 模式读取 API 余额 data.totalBalance。Endpoint 建议填写完整的 https://api.siliconflow.cn/v1；API Key 会使用 Android Keystore 加密保存。"
                             BalanceAuthMode.DEEPSEEK_API_KEY -> "DeepSeek 使用 GET /user/balance。Endpoint 建议填写 https://api.deepseek.com；API Key 会使用 Android Keystore 加密保存。"
                             BalanceAuthMode.SILICONFLOW_CONSOLE -> "控制台模式由内置浏览器完成登录，自动读取 /walletd-server 的网页余额；打开上面的开关后，还会读取 stage=3 代金券并按剩余额度累加。"
+                            BalanceAuthMode.MIMO_BALANCE -> "MIMO 按量模式读取 /api/v1/balance，按人民币显示现金余额，并在详情中保留赠送余额。余额存在约 5 分钟延迟。"
+                            BalanceAuthMode.MIMO_TOKEN_PLAN -> "MIMO Token Plan 读取 /api/v1/tokenPlan/detail 与 /api/v1/tokenPlan/usage，主值显示剩余百分比，详情显示 Credits 和有效期。"
                             BalanceAuthMode.EMAIL_PASSWORD -> "兼容标准接口的 Endpoint 建议填写完整的 https://…/api/v1。应用会自动请求 /auth/login、/auth/refresh 和 /user/profile。邮箱和密码会使用 Android Keystore 加密保存。"
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -1040,7 +1101,7 @@ class MainActivity : ComponentActivity() {
                     Text(
                         when {
                             balanceEditorBusy -> "连接中…"
-                            balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE -> "保存并登录"
+                            balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE || balanceAuthMode == BalanceAuthMode.MIMO_BALANCE || balanceAuthMode == BalanceAuthMode.MIMO_TOKEN_PLAN -> "保存并登录"
                             else -> "保存"
                         },
                     )
@@ -1268,12 +1329,15 @@ class MainActivity : ComponentActivity() {
             BalanceAuthMode.API_KEY -> "SiliconFlow API"
             BalanceAuthMode.DEEPSEEK_API_KEY -> "DeepSeek"
             BalanceAuthMode.SILICONFLOW_CONSOLE -> "SiliconFlow 控制台"
+            BalanceAuthMode.MIMO_BALANCE -> "MIMO 按量余额"
+            BalanceAuthMode.MIMO_TOKEN_PLAN -> "MIMO Token Plan"
             BalanceAuthMode.EMAIL_PASSWORD -> ""
         }
         balanceEndpointInput = service?.endpoint ?: when (balanceAuthMode) {
             BalanceAuthMode.API_KEY -> "https://api.siliconflow.cn/v1"
             BalanceAuthMode.DEEPSEEK_API_KEY -> "https://api.deepseek.com"
             BalanceAuthMode.SILICONFLOW_CONSOLE -> "https://cloud.siliconflow.cn"
+            BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> "https://platform.xiaomimimo.com"
             BalanceAuthMode.EMAIL_PASSWORD -> ""
         }
         balanceEmailInput = if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) {
@@ -1281,7 +1345,7 @@ class MainActivity : ComponentActivity() {
         } else {
             ""
         }
-        balancePasswordInput = if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) "" else credentials?.secret.orEmpty()
+        balancePasswordInput = if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE || balanceAuthMode == BalanceAuthMode.MIMO_BALANCE || balanceAuthMode == BalanceAuthMode.MIMO_TOKEN_PLAN) "" else credentials?.secret.orEmpty()
         balancePasswordVisible = false
         balanceIncludeVouchers = if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) service?.includeVouchers == true else false
         balanceIncludeGranted = if (balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) service?.includeGrantedBalance != false else true
@@ -1306,42 +1370,49 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun saveBalanceService() {
+        // Closing the editor resets its Compose state, so retain the selected provider first.
+        val selectedAuthMode = balanceAuthMode
         val name = balanceNameInput.trim()
         val endpoint = balanceEndpointInput.trim()
-        val account = if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) balanceEmailInput.trim() else ""
+        val account = if (selectedAuthMode == BalanceAuthMode.EMAIL_PASSWORD) balanceEmailInput.trim() else ""
         val secret = balancePasswordInput
         val editing = editingBalanceServiceId
         val existing = editing?.let { id -> balanceServices.firstOrNull { it.id == id } }
         balanceEditorError = ""
         val endpointChanged = existing != null && existing.endpoint.trimEnd('/') != endpoint.trimEnd('/')
-        val modeChanged = existing != null && existing.authMode != balanceAuthMode
+        val modeChanged = existing != null && existing.authMode != selectedAuthMode
         val needsLogin = existing == null || endpointChanged || modeChanged || existing.health == BalanceHealth.NOT_CONNECTED || existing.health == BalanceHealth.AUTH_REQUIRED
-        if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD && account.isBlank() && needsLogin) {
+        if (selectedAuthMode == BalanceAuthMode.EMAIL_PASSWORD && account.isBlank() && needsLogin) {
             balanceEditorError = "请输入邮箱"
             return
         }
-        if (balanceAuthMode != BalanceAuthMode.SILICONFLOW_CONSOLE && secret.isBlank() && needsLogin) {
-            balanceEditorError = when (balanceAuthMode) {
+        val browserAuth = selectedAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE || selectedAuthMode == BalanceAuthMode.MIMO_BALANCE || selectedAuthMode == BalanceAuthMode.MIMO_TOKEN_PLAN
+        if (!browserAuth && secret.isBlank() && needsLogin) {
+            balanceEditorError = when (selectedAuthMode) {
                 BalanceAuthMode.API_KEY -> "请输入 API Key"
                 BalanceAuthMode.DEEPSEEK_API_KEY -> "请输入 DeepSeek API Key"
-                BalanceAuthMode.SILICONFLOW_CONSOLE -> "请输入 session-token"
+                BalanceAuthMode.SILICONFLOW_CONSOLE, BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> "请先完成浏览器登录"
                 BalanceAuthMode.EMAIL_PASSWORD -> "请输入密码"
             }
             return
         }
         val serviceId = runCatching {
-            StandardBalanceRepository.saveDefinition(this, editing, name, endpoint, balanceAuthMode, balanceIncludeVouchers, balanceIncludeGranted)
+            StandardBalanceRepository.saveDefinition(this, editing, name, endpoint, selectedAuthMode, balanceIncludeVouchers, balanceIncludeGranted)
         }.getOrElse {
             balanceEditorError = it.message ?: "Endpoint 无效"
             return
         }
         loadBalanceServices()
-        if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) {
+        if (browserAuth) {
             closeBalanceEditor()
-            startSiliconFlowLogin(serviceId)
+            when (selectedAuthMode) {
+                BalanceAuthMode.SILICONFLOW_CONSOLE -> startSiliconFlowLogin(serviceId)
+                BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> startMimoLogin(serviceId)
+                BalanceAuthMode.EMAIL_PASSWORD, BalanceAuthMode.API_KEY, BalanceAuthMode.DEEPSEEK_API_KEY -> error("非浏览器认证模式不能启动内置登录页")
+            }
             return
         }
-        if ((balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD && account.isBlank()) || secret.isBlank()) {
+        if ((selectedAuthMode == BalanceAuthMode.EMAIL_PASSWORD && account.isBlank()) || secret.isBlank()) {
             closeBalanceEditor()
             message = "余额服务配置已保存"
             return
@@ -1377,6 +1448,12 @@ class MainActivity : ComponentActivity() {
         pendingSiliconFlowLoginServiceId = serviceId
         message = "正在打开 SiliconFlow 内置登录页…"
         siliconFlowLoginLauncher.launch(Intent(this, SiliconFlowLoginActivity::class.java))
+    }
+
+    private fun startMimoLogin(serviceId: String) {
+        pendingMimoLoginServiceId = serviceId
+        message = "正在打开 MIMO 内置登录页…"
+        mimoLoginLauncher.launch(Intent(this, MimoLoginActivity::class.java))
     }
 
     private fun refreshBalanceService(id: String) {
