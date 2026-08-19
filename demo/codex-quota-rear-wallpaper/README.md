@@ -15,7 +15,7 @@ page, then apply it there or from Xiaomi's rear-screen wallpaper list. Do not
 import it from the Assistant page.
 
 The wallpaper reads display-only fields from
-`content://org.orynnx.codexquota/quota`. The companion app must be installed
+`content://org.orynnx.codexquota/quota/wallpaper`. The companion app must be installed
 and authorized. It requests a provider refresh on init, resume, once per
 minute, and when the root-level transparent touch target is tapped. The footer
 shows the last update time when one exists.
@@ -28,11 +28,13 @@ shows the last update time when one exists.
 - Weekly and 5-hour windows render when returned by the provider.
 - If only Weekly is returned, the 5-hour reading is completely absent.
 - The clock and quota readings use larger type for the rear display; the date
-  uses explicit English month abbreviations (for example, `JUL 14`) instead
+uses explicit English month abbreviations (for example, `JUL 14`) instead
   of following the phone locale.
 - Progress tracks use a raised teal-gray contrast color, with green/amber/red
   fills for healthy, warning, and critical remaining quota.
 - Disconnected and no-window states remain visually quiet but actionable.
+- When CodeX has no returned window, the first balance service enabled for the
+  Wallpaper surface is shown instead.
 
 `description.xml` and `metadata.mrm` mirror the optional metadata structure
 found in a real Xiaomi/OuterView MRC. OuterView's package validator only

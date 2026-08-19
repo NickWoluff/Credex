@@ -5,7 +5,7 @@
   <Var name="card_offset_x" type="number" expression="((#view_width - (480 * #card_scale)) / 2)"/>
   <Var name="card_offset_y" type="number" expression="((#view_height - (304 * #card_scale)) / 2)"/>
 
-  <!-- Quota values are clamped before drawing. No new provider fields are required. -->
+  <!-- Quota and selected balance values are display-only provider fields. -->
   <Var name="fiveSafe" type="number" expression="ifelse(#five_hour_remaining{0,0,ifelse(#five_hour_remaining}100,100,#five_hour_remaining))"/>
   <Var name="weekSafe" type="number" expression="ifelse(#weekly_remaining{0,0,ifelse(#weekly_remaining}100,100,#weekly_remaining))"/>
   <Var name="isBound" type="number" expression="ifelse(strIsEmpty(@updated_at),0,1)"/>
@@ -13,6 +13,7 @@
   <Var name="hasWeek" type="number" expression="ifelse(#isBound ** (#weekly_remaining}-1),1,0)"/>
   <!-- 0 none, 1 weekly-only, 2 five-hour-only, 3 both. -->
   <Var name="quotaState" type="number" expression="(#hasFive*2+#hasWeek)"/>
+  <Var name="hasBalance" type="number" expression="ifelse(#balance_count}0,1,0)"/>
 
   <Var name="fiveLabel" type="string" expression="#fiveSafe+'%'"/>
   <Var name="weekLabel" type="string" expression="#weekSafe+'%'"/>
@@ -25,8 +26,8 @@
   <Var name="singleReset" type="string" expression="ifelse(#quotaState==1,@weekly_reset,@five_hour_reset)"/>
   <Var name="singleColor" type="number" expression="ifelse(#quotaState==1,#weekColor,#fiveColor)"/>
 
-  <Var name="statusColor" type="number" expression="ifelse(eqs(@status,'OK'),0xff10a37f,ifelse(eqs(@status,'Not signed in'),0xff7c7c76,0xffc77a10))"/>
-  <Var name="footerLabel" type="string" expression="ifelse(strIsEmpty(@updated_at),ifelse(eqs(@status,'Not signed in'),'Not connected','No update yet'),'Last update '+@updated_at)"/>
+  <Var name="statusColor" type="number" expression="ifelse(#hasBalance,0xff10a37f,ifelse(eqs(@status,'OK'),0xff10a37f,ifelse(eqs(@status,'Not signed in'),0xff7c7c76,0xffc77a10)))"/>
+  <Var name="footerLabel" type="string" expression="ifelse(#hasBalance,'Last update '+@balance_1_updated_at,ifelse(strIsEmpty(@updated_at),ifelse(eqs(@status,'Not signed in'),'Not connected','No update yet'),'Last update '+@updated_at))"/>
   <Var name="emptyTitle" type="string" expression="ifelse(eqs(@status,'OK'),'No quota window','Connect companion')"/>
   <Var name="emptyDetail" type="string" expression="ifelse(eqs(@status,'OK'),'No usage limits were returned','Open OuterView Quota to continue')"/>
 
@@ -70,8 +71,25 @@
       <Text x="204" y="195" size="11" color="#ff7c7c76" textExp="'Resets '+@singleReset" fontFamily="mipro-medium"/>
     </Group>
 
+    <!-- When CodeX has no window, show the first two selected balance services. -->
+    <Group visibility="(#quotaState==0) ** #hasBalance">
+      <Text x="204" y="76" size="11" color="#ffb0b0a8" text="BALANCE" fontFamily="mipro-medium"/>
+      <Text x="204" y="95" size="16" color="#fff4f4ef" textExp="@balance_1_name" fontFamily="mipro-demibold"/>
+      <Text x="444" y="87" size="28" color="#fff4f4ef" align="right" textExp="@balance_1_value" fontFamily="mipro-demibold"/>
+      <Text x="204" y="119" size="10" color="#ff7c7c76" textExp="ifelse(strIsEmpty(@balance_1_detail),@balance_1_status,@balance_1_detail)" fontFamily="mipro-medium"/>
+      <Rectangle x="204" y="140" w="240" h="1" fillColor="#ff292926" visibility="ifelse(#balance_count}1,1,0)"/>
+      <Text x="204" y="161" size="11" color="#ffb0b0a8" textExp="@balance_2_name" visibility="ifelse(#balance_count}1,1,0)" fontFamily="mipro-medium"/>
+      <Text x="444" y="154" size="23" color="#fff4f4ef" align="right" textExp="@balance_2_value" visibility="ifelse(#balance_count}1,1,0)" fontFamily="mipro-demibold"/>
+      <Text x="204" y="181" size="10" color="#ff7c7c76" textExp="ifelse(strIsEmpty(@balance_2_detail),@balance_2_status,@balance_2_detail)" visibility="ifelse(#balance_count}1,1,0)" fontFamily="mipro-medium"/>
+    </Group>
+
+    <!-- Keep the CodeX quota layout primary while surfacing the selected balance. -->
+    <Group visibility="(#quotaState}0) ** #hasBalance">
+      <Text x="204" y="231" size="10" color="#ff7c7c76" textExp="@balance_1_name+'  '+@balance_1_value" fontFamily="mipro-medium"/>
+    </Group>
+
     <!-- Empty and disconnected states. -->
-    <Group visibility="#quotaState==0">
+    <Group visibility="(#quotaState==0) ** (#hasBalance==0)">
       <Circle x="216" y="109" r="18" fillColor="#ff30302d"/>
       <Circle x="216" y="109" r="11" fillColor="#ff171715"/>
       <Circle x="227" y="98" r="3" fillColor="#ffb0b0a8"/>
@@ -86,7 +104,7 @@
   </Group>
 
   <VariableBinders>
-    <ContentProviderBinder name="CodexQuota" uri="content://org.orynnx.codexquota/quota" columns="five_hour_remaining,five_hour_reset,weekly_remaining,weekly_reset,plan,status,updated_at">
+    <ContentProviderBinder name="CodexQuota" uri="content://org.orynnx.codexquota/quota/assistant" columns="five_hour_remaining,five_hour_reset,weekly_remaining,weekly_reset,plan,status,updated_at,balance_count,balance_1_name,balance_1_value,balance_1_status,balance_1_detail,balance_1_updated_at,balance_2_name,balance_2_value,balance_2_status,balance_2_detail,balance_2_updated_at,balance_3_name,balance_3_value,balance_3_status,balance_3_detail,balance_3_updated_at">
       <Variable name="five_hour_remaining" type="int" column="five_hour_remaining"/>
       <Variable name="five_hour_reset" type="string" column="five_hour_reset"/>
       <Variable name="weekly_remaining" type="int" column="weekly_remaining"/>
@@ -94,6 +112,22 @@
       <Variable name="plan" type="string" column="plan"/>
       <Variable name="status" type="string" column="status"/>
       <Variable name="updated_at" type="string" column="updated_at"/>
+      <Variable name="balance_count" type="int" column="balance_count"/>
+      <Variable name="balance_1_name" type="string" column="balance_1_name"/>
+      <Variable name="balance_1_value" type="string" column="balance_1_value"/>
+      <Variable name="balance_1_status" type="string" column="balance_1_status"/>
+      <Variable name="balance_1_detail" type="string" column="balance_1_detail"/>
+      <Variable name="balance_1_updated_at" type="string" column="balance_1_updated_at"/>
+      <Variable name="balance_2_name" type="string" column="balance_2_name"/>
+      <Variable name="balance_2_value" type="string" column="balance_2_value"/>
+      <Variable name="balance_2_status" type="string" column="balance_2_status"/>
+      <Variable name="balance_2_detail" type="string" column="balance_2_detail"/>
+      <Variable name="balance_2_updated_at" type="string" column="balance_2_updated_at"/>
+      <Variable name="balance_3_name" type="string" column="balance_3_name"/>
+      <Variable name="balance_3_value" type="string" column="balance_3_value"/>
+      <Variable name="balance_3_status" type="string" column="balance_3_status"/>
+      <Variable name="balance_3_detail" type="string" column="balance_3_detail"/>
+      <Variable name="balance_3_updated_at" type="string" column="balance_3_updated_at"/>
     </ContentProviderBinder>
   </VariableBinders>
 

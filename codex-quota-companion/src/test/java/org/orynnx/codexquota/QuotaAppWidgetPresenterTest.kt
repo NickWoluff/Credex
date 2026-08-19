@@ -54,6 +54,33 @@ class QuotaAppWidgetPresenterTest {
     }
 
     @Test
+    fun balanceServicesFillWidgetWhenCodexIsNotAvailable() {
+        val balances = listOf(
+            BalanceService(id = "sf", name = "SiliconFlow", endpoint = "https://example.test", balance = "3.40", currency = "CNY"),
+            BalanceService(id = "ds", name = "DeepSeek", endpoint = "https://example.test", balance = "1.20", currency = "USD"),
+        )
+
+        val compact = QuotaWidgetPresenter.present(QuotaState(), balances, compact = true, showCodex = true)
+        val medium = QuotaWidgetPresenter.present(QuotaState(), balances, compact = false, showCodex = true)
+
+        assertEquals("SiliconFlow", compact.primaryBalance?.name)
+        assertEquals("SiliconFlow", medium.primaryBalance?.name)
+        assertEquals("DeepSeek", medium.secondaryBalance?.name)
+        assertTrue(medium.showSecondary)
+    }
+
+    @Test
+    fun selectedBalanceTakesPrimaryWhenCodexDisplayIsDisabled() {
+        val state = QuotaState(weeklyRemaining = 64, health = QuotaHealth.FRESH)
+        val balance = BalanceService(id = "ds", name = "DeepSeek", endpoint = "https://example.test", balance = "1.20", currency = "USD")
+
+        val presentation = QuotaWidgetPresenter.present(state, listOf(balance), compact = true, showCodex = false)
+
+        assertEquals(WidgetWindow.NONE, presentation.primaryWindow)
+        assertEquals("DeepSeek", presentation.primaryBalance?.name)
+    }
+
+    @Test
     fun widthPolicySelectsCompactAndMediumAtDocumentedBoundary() {
         assertTrue(QuotaWidgetPresenter.isCompact(279))
         assertFalse(QuotaWidgetPresenter.isCompact(280))

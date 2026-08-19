@@ -3,7 +3,7 @@
     <string name="app_name">OuterView Quota</string>
     <string name="widget_name">OuterView Quota</string>
     <string name="widget_name_short">OuterView</string>
-    <string name="widget_description">在主屏幕查看 Codex 周配额，并可一键刷新。</string>
+    <string name="widget_description">在主屏幕查看 Codex 配额或已选择的余额服务，并可一键刷新。</string>
     <string name="widget_weekly">WEEKLY</string>
     <string name="widget_five_hour">5 HOURS</string>
     <string name="widget_codex_usage">CODEX USAGE</string>
@@ -12,6 +12,7 @@
     <string name="widget_refreshing">正在更新</string>
     <string name="widget_up_to_date">已是最新</string>
     <string name="widget_last_updated">最后更新</string>
+    <string name="widget_balance">余额</string>
     <string name="widget_last_updated_at">最后更新 %1$s</string>
     <string name="widget_connected">已连接</string>
     <string name="widget_no_window">暂无配额窗口</string>

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "name": "OuterView Balance Monitor",
+  "author": "OuterView",
+  "version": "1.0.0",
+  "target": "xiaomi-desktop-maml",
+  "defaultMamlConfig": {}
+}

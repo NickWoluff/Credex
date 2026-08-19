@@ -68,14 +68,21 @@ class QuotaForegroundService : Service() {
             return
         }
         val before = QuotaRepository.current(applicationContext)
-        val state = QuotaRepository.refresh(applicationContext, lease = refreshLease)
+        val balanceBefore = StandardBalanceRepository.list(applicationContext)
+        val state = if (QuotaRepository.signedIn(applicationContext)) {
+            QuotaRepository.refresh(applicationContext, lease = refreshLease)
+        } else {
+            before
+        }
+        StandardBalanceRepository.refreshAll(applicationContext)
+        val balanceChanged = balanceBefore != StandardBalanceRepository.list(applicationContext)
         if (!eligible(this)) {
             stopSelf()
             return
         }
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(state))
-        if (state != before) {
-            contentResolver.notifyChange("content://org.orynnx.codexquota/quota".toUri(), null)
+        if (state != before || balanceChanged) {
+            QuotaDisplayContract.notifyAll(applicationContext)
         }
     }
 
@@ -95,7 +102,11 @@ class QuotaForegroundService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val balance = StandardBalanceRepository.list(this).firstOrNull {
+            it.health == BalanceHealth.FRESH || it.health == BalanceHealth.CACHED
+        }
         val summary = when {
+            !QuotaRepository.signedIn(this) && balance != null -> "${balance.name} ${balance.currency} ${balance.balance}"
             state.hasFiveHour && state.hasWeekly -> "5 小时 ${state.fiveHourRemaining}%  /  本周 ${state.weeklyRemaining}%"
             state.hasWeekly -> "本周剩余 ${state.weeklyRemaining}%"
             state.hasFiveHour -> "5 小时剩余 ${state.fiveHourRemaining}%"
@@ -134,7 +145,7 @@ class QuotaForegroundService : Service() {
         }
 
         private fun eligible(context: Context): Boolean =
-            QuotaRepository.signedIn(context) &&
+            (QuotaRepository.signedIn(context) || StandardBalanceRepository.hasAuthenticatedService(context)) &&
                 QuotaRepository.backgroundEnabled(context) &&
                 QuotaRepository.notificationSyncEnabled(context) &&
                 (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)

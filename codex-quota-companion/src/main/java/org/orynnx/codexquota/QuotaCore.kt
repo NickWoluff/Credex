@@ -245,7 +245,11 @@ object QuotaRepository {
     fun markNotificationEducationSeen(context: Context) = prefs(context).edit { putBoolean(NOTIFICATION_EDUCATED, true) }
     fun setBackgroundEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit { putBoolean(BACKGROUND, enabled) }
-        if (enabled && signedIn(context)) QuotaRefreshScheduler.schedule(context) else QuotaRefreshScheduler.cancel(context)
+        if (enabled && (signedIn(context) || StandardBalanceRepository.hasAuthenticatedService(context))) {
+            QuotaRefreshScheduler.schedule(context)
+        } else if (!enabled) {
+            QuotaRefreshScheduler.cancel(context)
+        }
         if (!enabled) QuotaForegroundService.stop(context)
     }
     fun setNotificationSyncEnabled(context: Context, enabled: Boolean) {
@@ -415,7 +419,7 @@ object QuotaRepository {
     }
     private fun clock() = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.now())
     private fun notifyRearSurfaces(context: Context) {
-        context.contentResolver.notifyChange("content://org.orynnx.codexquota/quota".toUri(), null)
+        QuotaDisplayContract.notifyAll(context)
     }
 }
 

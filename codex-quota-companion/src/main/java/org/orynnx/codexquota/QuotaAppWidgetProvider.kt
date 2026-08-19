@@ -25,6 +25,10 @@ internal data class QuotaWidgetPresentation(
     val fiveHourReset: String,
     val fiveHourResetAtEpoch: Long,
     val health: QuotaHealth,
+    val primaryBalance: BalanceService? = null,
+    val secondaryBalance: BalanceService? = null,
+    val balanceHint: BalanceService? = null,
+    val showSecondary: Boolean = showFiveHourSecondary,
 )
 
 internal object QuotaWidgetPresenter {
@@ -33,11 +37,27 @@ internal object QuotaWidgetPresenter {
 
     fun isCompact(minWidthDp: Int) = minWidthDp < MEDIUM_MIN_WIDTH_DP
 
-    fun present(state: QuotaState, compact: Boolean): QuotaWidgetPresentation {
+    fun present(state: QuotaState, compact: Boolean): QuotaWidgetPresentation =
+        present(state, emptyList(), compact, showCodex = true)
+
+    fun present(
+        state: QuotaState,
+        balances: List<BalanceService>,
+        compact: Boolean,
+        showCodex: Boolean,
+    ): QuotaWidgetPresentation {
+        val hasCodexWindow = showCodex && (state.hasWeekly || state.hasFiveHour)
         val primaryWindow = when {
-            state.hasWeekly -> WidgetWindow.WEEKLY
-            state.hasFiveHour -> WidgetWindow.FIVE_HOUR
+            hasCodexWindow && state.hasWeekly -> WidgetWindow.WEEKLY
+            hasCodexWindow && state.hasFiveHour -> WidgetWindow.FIVE_HOUR
             else -> WidgetWindow.NONE
+        }
+        val primaryBalance = if (primaryWindow == WidgetWindow.NONE) balances.firstOrNull() else null
+        val showFiveHourSecondary = !compact && hasCodexWindow && state.hasWeekly && state.hasFiveHour
+        val secondaryBalance = if (!compact && !showFiveHourSecondary) {
+            if (primaryBalance != null) balances.getOrNull(1) else balances.firstOrNull()
+        } else {
+            null
         }
         return QuotaWidgetPresentation(
             primaryWindow = primaryWindow,
@@ -57,11 +77,15 @@ internal object QuotaWidgetPresenter {
                 WidgetWindow.NONE -> 0L
             },
             // A compact 2-cell widget deliberately shows one window only.
-            showFiveHourSecondary = !compact && state.hasWeekly && state.hasFiveHour,
+            showFiveHourSecondary = showFiveHourSecondary,
             fiveHourRemaining = state.fiveHourRemaining,
             fiveHourReset = state.fiveHourReset,
             fiveHourResetAtEpoch = state.fiveHourResetAtEpoch,
             health = state.health,
+            primaryBalance = primaryBalance,
+            secondaryBalance = secondaryBalance,
+            balanceHint = if (primaryWindow != WidgetWindow.NONE) balances.firstOrNull() else null,
+            showSecondary = showFiveHourSecondary || secondaryBalance != null,
         )
     }
 }
@@ -74,7 +98,8 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
         if (appWidgetIds.isEmpty()) return
         val state = QuotaRepository.current(context)
-        appWidgetIds.forEach { updateOne(context, manager, it, state, refreshing = false) }
+        val balances = StandardBalanceRepository.forSurface(context, BalanceSurface.LAUNCHER, 2)
+        appWidgetIds.forEach { updateOne(context, manager, it, state, balances, refreshing = false) }
         enqueueRefresh(context, force = false)
     }
 
@@ -84,11 +109,18 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
         appWidgetId: Int,
         newOptions: android.os.Bundle,
     ) {
-        updateOne(context, manager, appWidgetId, QuotaRepository.current(context), refreshing = false)
+        updateOne(
+            context,
+            manager,
+            appWidgetId,
+            QuotaRepository.current(context),
+            StandardBalanceRepository.forSurface(context, BalanceSurface.LAUNCHER, 2),
+            refreshing = false,
+        )
     }
 
     override fun onEnabled(context: Context) {
-        if (QuotaRepository.signedIn(context) && QuotaRepository.backgroundEnabled(context)) {
+        if ((QuotaRepository.signedIn(context) || StandardBalanceRepository.hasAuthenticatedService(context)) && QuotaRepository.backgroundEnabled(context)) {
             QuotaRefreshScheduler.schedule(context)
         }
     }
@@ -121,7 +153,8 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
             val appContext = context.applicationContext
             val manager = AppWidgetManager.getInstance(appContext)
             val ids = manager.getAppWidgetIds(ComponentName(appContext, QuotaAppWidgetProvider::class.java))
-            ids.forEach { updateOne(appContext, manager, it, state, refreshing) }
+            val balances = StandardBalanceRepository.forSurface(appContext, BalanceSurface.LAUNCHER, 2)
+            ids.forEach { updateOne(appContext, manager, it, state, balances, refreshing) }
         }
 
         private fun updateOne(
@@ -129,13 +162,14 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
             manager: AppWidgetManager,
             appWidgetId: Int,
             state: QuotaState,
+            balances: List<BalanceService>,
             refreshing: Boolean,
         ) {
             val views = if (Build.VERSION.SDK_INT >= 31) {
                 RemoteViews(
                     mapOf(
-                        SizeF(120f, 110f) to createViews(context, R.layout.widget_quota_small, state, compact = true, refreshing),
-                        SizeF(280f, 110f) to createViews(context, R.layout.widget_quota_medium, state, compact = false, refreshing),
+                        SizeF(120f, 110f) to createViews(context, R.layout.widget_quota_small, state, balances, compact = true, refreshing),
+                        SizeF(280f, 110f) to createViews(context, R.layout.widget_quota_medium, state, balances, compact = false, refreshing),
                     ),
                 )
             } else {
@@ -146,6 +180,7 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
                     context,
                     if (compact) R.layout.widget_quota_small else R.layout.widget_quota_medium,
                     state,
+                    balances,
                     compact,
                     refreshing,
                 )
@@ -157,10 +192,16 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
             context: Context,
             layoutId: Int,
             state: QuotaState,
+            balances: List<BalanceService>,
             compact: Boolean,
             refreshing: Boolean,
         ): RemoteViews {
-            val presentation = QuotaWidgetPresenter.present(state, compact)
+            val presentation = QuotaWidgetPresenter.present(
+                state,
+                balances,
+                compact,
+                showCodex = DashboardPreferences.showCodex(context),
+            )
             return RemoteViews(context.packageName, layoutId).apply {
                 val openApp = PendingIntent.getActivity(
                     context,
@@ -184,9 +225,10 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
                 if (!compact) {
                     setViewVisibility(
                         R.id.widget_secondary_group,
-                        if (presentation.showFiveHourSecondary) View.VISIBLE else View.GONE,
+                        if (presentation.showSecondary) View.VISIBLE else View.GONE,
                     )
                     if (presentation.showFiveHourSecondary) {
+                        setTextViewText(R.id.widget_secondary_label, context.getString(R.string.widget_five_hour))
                         setTextViewText(R.id.widget_secondary_value, "${presentation.fiveHourRemaining.coerceIn(0, 100)}%")
                         setTextViewText(
                             R.id.widget_secondary_reset,
@@ -196,13 +238,20 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
                             ),
                         )
                         setProgressBar(R.id.widget_secondary_progress, 100, presentation.fiveHourRemaining.coerceIn(0, 100), false)
+                        setViewVisibility(R.id.widget_secondary_progress, View.VISIBLE)
+                    } else if (presentation.secondaryBalance != null) {
+                        val service = presentation.secondaryBalance
+                        setTextViewText(R.id.widget_secondary_label, service.name)
+                        setTextViewText(R.id.widget_secondary_value, balanceDisplayValue(service))
+                        setTextViewText(R.id.widget_secondary_reset, balanceSubtext(service))
+                        setViewVisibility(R.id.widget_secondary_progress, View.INVISIBLE)
                     }
                 }
 
-                val status = statusText(context, state, compact, refreshing)
+                val status = statusText(context, state, presentation, compact, refreshing)
                 setTextViewText(R.id.widget_status, status.first)
                 setTextViewText(R.id.widget_status_detail, status.second)
-                setTextColor(R.id.widget_status_dot, context.getColor(statusColor(state.health, refreshing)))
+                setTextColor(R.id.widget_status_dot, context.getColor(statusColor(state.health, presentation.primaryBalance, refreshing)))
                 setContentDescription(
                     R.id.widget_refresh,
                     context.getString(if (refreshing) R.string.widget_refreshing else R.string.widget_refresh),
@@ -219,6 +268,14 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
             state: QuotaState,
             compact: Boolean,
         ) {
+            if (presentation.primaryBalance != null) {
+                val service = presentation.primaryBalance
+                setTextViewText(R.id.widget_primary_label, service.name)
+                setTextViewText(R.id.widget_primary_value, balanceDisplayValue(service))
+                setTextViewText(R.id.widget_primary_reset, balanceSubtext(service))
+                setViewVisibility(R.id.widget_primary_progress, View.INVISIBLE)
+                return
+            }
             when (presentation.primaryWindow) {
                 WidgetWindow.WEEKLY, WidgetWindow.FIVE_HOUR -> {
                     setTextViewText(
@@ -270,9 +327,15 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
         private fun statusText(
             context: Context,
             state: QuotaState,
+            presentation: QuotaWidgetPresentation,
             compact: Boolean,
             refreshing: Boolean,
         ): Pair<String, String> {
+            presentation.primaryBalance?.let { service ->
+                if (refreshing) return context.getString(R.string.widget_refreshing) to service.updatedAt
+                val detail = listOf(service.status, service.updatedAt.takeUnless { it == "--" }).filterNotNull().filter { it.isNotBlank() }.joinToString(" · ")
+                return if (compact) service.name to detail else service.name to (service.detail.ifBlank { detail })
+            }
             if (refreshing) {
                 return context.getString(R.string.widget_refreshing) to
                     state.updatedAt.takeUnless { it == "--" }.orEmpty()
@@ -283,21 +346,30 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
                 else -> "--" to 0L
             }
             val countdown = QuotaResetText.widgetStatus(primaryReset.second)
+            val balanceHint = presentation.balanceHint?.let { "${it.name} ${balanceDisplayValue(it)}" }
             return when (state.health) {
                 QuotaHealth.FRESH -> if (compact) {
-                    context.getString(R.string.widget_last_updated_at, state.updatedAt) to ""
+                    (balanceHint ?: context.getString(R.string.widget_last_updated_at, state.updatedAt)) to ""
                 } else {
-                    context.getString(R.string.widget_last_updated) to
-                        listOf(state.updatedAt, countdown).filter { it.isNotBlank() && it != "--" }.joinToString(" · ")
+                    if (balanceHint != null) {
+                        context.getString(R.string.widget_balance) to balanceHint
+                    } else {
+                        context.getString(R.string.widget_last_updated) to
+                            listOf(state.updatedAt, countdown).filter { it.isNotBlank() && it != "--" }.joinToString(" · ")
+                    }
                 }
                 QuotaHealth.EMPTY -> context.getString(R.string.widget_connected) to context.getString(R.string.widget_no_window)
                 QuotaHealth.CACHED -> if (compact) {
-                    context.getString(R.string.widget_last_updated_at, state.updatedAt) to ""
+                    (balanceHint ?: context.getString(R.string.widget_last_updated_at, state.updatedAt)) to ""
                 } else {
-                    context.getString(R.string.widget_cached) to
-                        listOf(context.getString(R.string.widget_last_success, state.updatedAt), countdown)
-                            .filter { it.isNotBlank() && it != "--" }
-                            .joinToString(" · ")
+                    if (balanceHint != null) {
+                        context.getString(R.string.widget_cached) to balanceHint
+                    } else {
+                        context.getString(R.string.widget_cached) to
+                            listOf(context.getString(R.string.widget_last_success, state.updatedAt), countdown)
+                                .filter { it.isNotBlank() && it != "--" }
+                                .joinToString(" · ")
+                    }
                 }
                 QuotaHealth.AUTH_REQUIRED -> context.getString(R.string.widget_auth_required) to context.getString(R.string.widget_tap_to_open)
                 QuotaHealth.SIGNED_OUT -> context.getString(R.string.widget_not_connected) to context.getString(R.string.widget_tap_to_open)
@@ -305,8 +377,11 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
         }
 
         @ColorRes
-        private fun statusColor(health: QuotaHealth, refreshing: Boolean) = when {
+        private fun statusColor(health: QuotaHealth, balance: BalanceService?, refreshing: Boolean) = when {
             refreshing -> R.color.widget_status_refreshing
+            balance?.health == BalanceHealth.FRESH -> R.color.widget_status_success
+            balance?.health == BalanceHealth.CACHED -> R.color.widget_status_warning
+            balance?.health == BalanceHealth.AUTH_REQUIRED || balance?.health == BalanceHealth.ERROR -> R.color.widget_status_error
             health == QuotaHealth.FRESH || health == QuotaHealth.EMPTY -> R.color.widget_status_success
             health == QuotaHealth.AUTH_REQUIRED -> R.color.widget_status_error
             health == QuotaHealth.CACHED -> R.color.widget_status_warning
@@ -315,7 +390,8 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
 
         private fun requestRefresh(context: Context, force: Boolean) {
             val appContext = context.applicationContext
-            if (!QuotaRepository.signedIn(appContext)) {
+            val hasConnection = QuotaRepository.signedIn(appContext) || StandardBalanceRepository.hasAuthenticatedService(appContext)
+            if (!hasConnection) {
                 updateAll(appContext, QuotaState())
                 return
             }
@@ -324,5 +400,13 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
                 updateAll(appContext)
             }
         }
+
+        private fun balanceSubtext(service: BalanceService): String =
+            service.detail.ifBlank {
+                listOf(service.status, service.updatedAt.takeUnless { it == "--" })
+                    .filterNotNull()
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
+            }
     }
 }
