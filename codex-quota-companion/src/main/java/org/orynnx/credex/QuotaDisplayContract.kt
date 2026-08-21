@@ -1,0 +1,30 @@
+package org.orynnx.credex
+
+import android.content.Context
+import android.net.Uri
+
+/**
+ * Public, credential-free URIs consumed by the Android display hosts.
+ */
+internal object QuotaDisplayContract {
+    private const val AUTHORITY = "org.orynnx.credex"
+    private const val BASE = "content://$AUTHORITY/quota"
+
+    val legacyUri: Uri = Uri.parse(BASE)
+    val assistantUri: Uri = Uri.parse("$BASE/assistant")
+    val wallpaperUri: Uri = Uri.parse("$BASE/wallpaper")
+
+    fun uriFor(surface: BalanceSurface): Uri = when (surface) {
+        BalanceSurface.ASSISTANT_REAR -> assistantUri
+        BalanceSurface.WALLPAPER_REAR -> wallpaperUri
+        BalanceSurface.LAUNCHER -> legacyUri
+    }
+
+    fun notifyAll(context: Context) {
+        context.contentResolver.run {
+            notifyChange(legacyUri, null)
+            notifyChange(assistantUri, null)
+            notifyChange(wallpaperUri, null)
+        }
+    }
+}

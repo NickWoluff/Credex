@@ -64,7 +64,7 @@ def widget(width, dark=False, dual=False, signed_out=False, cached=False, balanc
 
     if width < 220:
         mark(draw, 10, 10, 14, palette["ink"], palette["green"])
-        text(draw, (30, 10), "OUTERVIEW", 9, palette["ink"], "semibold")
+        text(draw, (30, 10), "CREDEX", 9, palette["ink"], "semibold")
         refresh_icon(draw, width - 19, 17, palette["muted"])
         if signed_out:
             text(draw, (10, 39), "CODEX", 10, palette["muted"], "semibold")
@@ -87,7 +87,7 @@ def widget(width, dark=False, dual=False, signed_out=False, cached=False, balanc
         return image
 
     mark(draw, 12, 11, 16, palette["ink"], palette["green"])
-    text(draw, (35, 10), "OUTERVIEW QUOTA", 10, palette["ink"], "semibold")
+    text(draw, (35, 10), "CREDEX", 10, palette["ink"], "semibold")
     refresh_icon(draw, width - 19, 17, palette["muted"])
 
     right_width = 88 if dual else 0
@@ -121,7 +121,7 @@ def widget(width, dark=False, dual=False, signed_out=False, cached=False, balanc
 
 canvas = Image.new("RGB", (1000, 740), "#e7e7e2")
 draw = ImageDraw.Draw(canvas)
-text(draw, (40, 24), "OuterView Quota / Launcher widgets", 18, "#171716", "semibold")
+text(draw, (40, 24), "Credex / Launcher widgets", 18, "#171716", "semibold")
 text(draw, (40, 50), "Fixed grid · single-line labels · no accidental wrapping", 11, "#686862")
 
 cases = [

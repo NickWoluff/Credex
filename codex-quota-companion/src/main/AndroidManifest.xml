@@ -11,49 +11,51 @@
         android:allowBackup="false"
         android:alwaysRetainTaskState="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme"
-        tools:ignore="MonochromeLauncherIcon">
-        <meta-data
-            android:name="miuiWidgetVersion"
-            android:value="2" />
-        <activity android:name=".MainActivity" android:exported="true">
+        android:theme="@style/AppTheme">
+        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".SettingsActivity" android:exported="false" />
-        <activity android:name=".WidgetSettingsActivity" android:exported="false" />
-        <activity android:name=".WidgetUiSettingsActivity" android:exported="false" />
-        <activity android:name=".ThemeSettingsActivity" android:exported="false" />
-        <activity android:name=".ServiceConfigurationActivity" android:exported="false" />
-        <activity android:name=".CodexLoginActivity" android:exported="false" />
+        <activity android:name=".SettingsActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".WidgetSettingsActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".WidgetUiSettingsActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".ThemeSettingsActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".AboutActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".ReferencesActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".HelpActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".DisclaimerActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".ServiceConfigurationActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".CodexLoginActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity
             android:name=".SiliconFlowLoginActivity"
             android:exported="false"
-            android:label="SiliconFlow 登录" />
+            android:label="SiliconFlow 登录"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".MimoLoginActivity"
             android:exported="false"
-            android:label="MIMO 登录" />
+            android:label="MIMO 登录"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".ConsoleLoginActivity"
             android:exported="false"
-            android:label="平台登录" />
+            android:label="平台登录"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".KimiLoginActivity"
             android:exported="false"
-            android:label="Kimi 登录" />
-        <!-- Deliberately exported: Xiaomi's separate rear-display MAML process reads display-only fields. -->
+            android:label="Kimi 登录"
+            android:screenOrientation="portrait" />
         <provider
             android:name=".QuotaProvider"
-            android:authorities="org.orynnx.codexquota"
+            android:authorities="org.orynnx.credex"
             android:exported="true"
             tools:ignore="ExportedContentProvider" />
         <service
@@ -79,28 +81,6 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/quota_appwidget_info" />
-        </receiver>
-        <receiver
-            android:name=".XiaomiQuotaWidgetProvider"
-            android:exported="true"
-            android:label="@string/widget_name_xiaomi"
-            android:process=":widgetProvider">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="miui.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/quota_appwidget_info" />
-            <meta-data
-                android:name="miuiWidget"
-                android:value="true" />
-            <meta-data
-                android:name="miuiWidgetRefresh"
-                android:value="exposure" />
-            <meta-data
-                android:name="miuiWidgetRefreshMinInterval"
-                android:value="20000" />
         </receiver>
         <receiver android:name=".QuotaRefreshBootReceiver" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>

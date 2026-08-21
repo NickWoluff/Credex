@@ -17,5 +17,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "CodeXRateOnRearScreen"
+rootProject.name = "Credex"
 include(":codex-quota-companion")

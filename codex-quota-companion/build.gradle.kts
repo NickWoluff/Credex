@@ -1,21 +1,25 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
+val credexVersionName = "1.0.0"
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
 }
 
+layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("Credex-app"))
+
 android {
-    namespace = "org.orynnx.codexquota"
+    namespace = "org.orynnx.credex"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "org.orynnx.codexquota"
+        applicationId = "org.orynnx.credex"
         minSdk = 29
         targetSdk = 37
-        versionCode = 10
-        versionName = "0.9.0"
+        versionCode = 12
+        versionName = credexVersionName
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -27,6 +31,14 @@ android {
 }
 
 tasks.withType<KotlinJvmCompile>().configureEach { compilerOptions { jvmTarget = JvmTarget.JVM_17 } }
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("Credex-v$credexVersionName-${variant.name}.apk")
+        }
+    }
+}
 
 dependencies {
     implementation(platform(libs.compose.bom))
@@ -41,6 +53,7 @@ dependencies {
     implementation(libs.material.components)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.core.ktx)
+    implementation(files("libs/reorderable-android-3.1.0.aar"))
     testImplementation(libs.junit)
     testImplementation(libs.json.test)
 }

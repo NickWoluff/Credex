@@ -1,40 +1,34 @@
-# OuterView Quota for Codex
+# Credex
 
-The app can use a user-controlled Android foreground service with a persistent low-priority notification to refresh quota data every 15 minutes. In **Settings > Sync**, **Continuous sync** and **Persistent notification** are separate controls: turning off the latter stops the foreground service and keeps the quieter persisted JobScheduler refresh path, without a notification prompt. Android or OEM battery policy may still defer that quiet work, so the settings page includes a shortcut to the app's system background settings.
+Credex Android 应用用于集中查看多个 AI 服务的账户余额和配额，并将展示数据提供给 Android 原生桌面小组件。当前版本仅支持竖屏手机；平板适配将在后续单独处理。
 
-Version 0.9 adds the optional quiet-sync control to the standard Android Launcher widget, app, and rear-display surfaces. The compact two-cell form keeps one quota window legible; widening it reveals the 5-hour window only when OpenAI actually returns one. It uses an Android adaptive icon with a GPT Image 2 color layer plus an Android 13 monochrome layer, and uses standard Material refresh artwork. It supports day/night resources, one-tap refresh, cached and authorization states, and direct entry into the app. JobScheduler refreshes continue to push new state to every placed widget even when the foreground notification is disabled, while the widget's system update interval remains disabled rather than implying a platform-unsupported 15-minute cadence.
+## 支持的服务
 
-When a reset timestamp is available, the app and medium widget show both the absolute time and a relative countdown. The compact widget keeps only the one-line relative countdown when space permits, while preserving the last-successful-update status.
+- OpenAI Codex：5 小时与周配额。
+- DeepSeek、SiliconFlow、Xiaomi MIMO、火山引擎、OpenCode、Kimi、GLM：依服务商能力展示账户余额或各类 Plan 配额。
+- 自定义接口：使用用户提供的标准余额接口。
 
-After sign-in, add it from **Settings > Home screen > Add quota widget**. If the Launcher does not support in-app pinning, long-press the front home screen and select **OuterView Quota** from the widget picker. The development preview is `design/widget-design-preview.png`. Balance services can be enabled independently for the Android Launcher widget, Xiaomi desktop MAML, Assistant rear card, and Wallpaper rear surface; their order is controlled from Settings.
+服务可独立启用、排序和配置显示位置。Plan 服务可选择展示已使用或剩余配额。
 
-The visual system follows OpenAI's published principles of geometric precision, rounded warmth, and generous spacing. OuterView remains the primary brand; the app does not reproduce the OpenAI logo or imply affiliation.
+## 小组件与刷新
 
-If OpenAI returns only a weekly window, the app, rear card, and Launcher widget hide the unavailable 5-hour quota instead of displaying a placeholder.
+Android 桌面小组件支持主服务和可选副服务，可在应用的“小组件配置”中调整服务、数值折叠方式、高度与上下偏移。应用通过系统后台任务与用户可选的前台同步服务刷新数据；刷新失败时保留最近一次成功获取的数据。
 
-Standalone Android helper for Codex quota surfaces. It does not run Codex on Android.
+## 数据安全
 
-Transient refresh failures preserve the last known-good quota values. The UI labels that snapshot as cached instead of replacing it with an empty state.
+登录会话、访问令牌和 API Key 仅保存于 Android Keystore 加密存储。导出的 `content://org.orynnx.credex/quota` Provider 仅提供展示字段，不包含令牌、账号标识或原始响应。
 
-## Data flow
+## 构建
 
-1. The user completes a ChatGPT OAuth Authorization Code + PKCE flow in the system browser.
-2. The app encrypts the resulting access token with an Android Keystore AES key.
-3. It requests `GET https://chatgpt.com/backend-api/wham/usage` at most once per minute.
-4. Android and the rear-screen MAML runtimes read only display fields through the exported `content://org.orynnx.codexquota/quota` contract. Surface-specific MAML URIs are `/quota/desktop`, `/quota/assistant`, and `/quota/wallpaper`.
-5. Repository refreshes publish the same display-only state to placed Launcher widgets via standard `RemoteViews`.
-
-The provider never returns the OAuth token, refresh token, account identifier, or raw API response.
-
-## Build
+需要 JDK 17：
 
 ```powershell
-$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+.\gradlew.bat :codex-quota-companion:testDebugUnitTest
 .\gradlew.bat :codex-quota-companion:assembleDebug
 ```
 
-Debug APK: `codex-quota-companion/build/outputs/apk/debug/codex-quota-companion-debug.apk`.
+Debug APK 位于仓库根目录的 `build/Credex-app/outputs/apk/debug/Credex-v<版本号>-debug.apk`。
 
-## Compatibility warning
+## 兼容性说明
 
-The `wham/usage` endpoint and the Codex OAuth client are not a stable mobile-app API. OpenAI can alter or revoke them, and reauthorization may then be required. This helper has no API-key mode because OpenAI Platform API keys do not represent a ChatGPT plan's Codex quota.
+服务商的网页、登录策略和非稳定接口均可能发生变化，届时可能需要重新登录或等待适配更新。Credex 不代表、隶属于或获得任何所列服务商的背书。

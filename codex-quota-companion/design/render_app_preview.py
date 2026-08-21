@@ -27,7 +27,7 @@ def mark(d, x, y, size):
 
 def header(d, settings=False):
     mark(d, 22, 38, 28)
-    t(d, (60, 39), "OuterView", 16, bold=True)
+    t(d, (60, 39), "Credex", 16, bold=True)
     t(d, (60, 60), "SETTINGS" if settings else "CODEX USAGE", 9, SECONDARY)
     if settings:
         t(d, (22, 58), "‹", 28, SECONDARY, anchor="mm")
@@ -44,7 +44,7 @@ def progress(d, value, box, color=INK):
 
 def login():
     im = Image.new("RGB", (390, 844), BG); d = ImageDraw.Draw(im)
-    mark(d, 22, 40, 30); t(d, (62, 45), "OuterView", 16, bold=True)
+    mark(d, 22, 40, 30); t(d, (62, 45), "Credex", 16, bold=True)
     mark(d, 24, 154, 76)
     t(d, (24, 262), "把 Codex 用量", 32, bold=True)
     t(d, (24, 309), "带到背屏", 32, bold=True)
@@ -54,7 +54,7 @@ def login():
     t(d, (195, 496), "使用 OpenAI 账户继续", 15, BG, True, "mm")
     t(d, (195, 549), "将在系统浏览器中安全打开授权页面", 12, SECONDARY, anchor="mm")
     t(d, (195, 603), "授权遇到问题？", 13, SECONDARY, anchor="mm")
-    t(d, (24, 791), "独立 Companion，由 OuterView 提供，与 OpenAI 无隶属关系。", 10, SECONDARY)
+    t(d, (24, 791), "独立 Companion，由 Credex 提供，与 OpenAI 无隶属关系。", 10, SECONDARY)
     return im
 
 
@@ -113,7 +113,7 @@ def settings():
     row(d, 635, "隐私与凭证", "Android Keystore 加密")
     t(d, (24, 728), "关于", 11, SECONDARY)
     d.rounded_rectangle((20, 750, 370, 824), 22, fill=SURFACE, outline=LINE, width=1)
-    row(d, 753, "OuterView Quota", "版本 0.4.0 · 独立 Companion")
+    row(d, 753, "Credex", "版本 0.4.0 · 独立 Companion")
     return im
 
 

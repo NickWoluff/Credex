@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">OuterView Quota</string>
-    <string name="widget_name">OuterView Quota</string>
+    <string name="app_name">Credex</string>
+    <string name="widget_name">Credex</string>
     <string name="widget_name_xiaomi">账户余额</string>
-    <string name="widget_name_2x2">OuterView 2×2</string>
-    <string name="widget_name_4x2">OuterView 4×2</string>
-    <string name="widget_name_short">OuterView</string>
+    <string name="widget_name_2x2">Credex 2×2</string>
+    <string name="widget_name_4x2">Credex 4×2</string>
+    <string name="widget_name_short">Credex</string>
     <string name="widget_description">在主屏幕查看 Codex 配额或已选择的余额服务，并可一键刷新。</string>
     <string name="widget_weekly">WEEKLY</string>
     <string name="widget_five_hour">5 HOURS</string>
