@@ -1,10 +1,7 @@
 package org.orynnx.codexquota
 
 import android.Manifest
-import android.app.PendingIntent
-import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -21,77 +18,239 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState as rememberMaterialTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import top.yukonga.miuix.kmp.basic.Card as MiuixCard
+import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBar as MiuixFloatingNavigationBar
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem as MiuixFloatingNavigationBarItem
+import top.yukonga.miuix.kmp.basic.Scaffold as MiuixScaffold
+import top.yukonga.miuix.kmp.basic.TopAppBar as MiuixTopAppBar
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.rememberTopAppBarState as rememberMiuixTopAppBarState
+import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator as MiuixLinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.Surface as MiuixSurface
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
+import top.yukonga.miuix.kmp.window.WindowDialog as MiuixWindowDialog
+import top.yukonga.miuix.kmp.window.WindowBottomSheet as MiuixWindowBottomSheet
+import top.yukonga.miuix.kmp.anim.folmeSpring
+import top.yukonga.miuix.kmp.preference.ArrowPreference as MiuixArrowPreference
+import top.yukonga.miuix.kmp.preference.CheckboxPreference as MiuixCheckboxPreference
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference as MiuixOverlayDropdownPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference as MiuixSwitchPreference
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Add
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Home
+import top.yukonga.miuix.kmp.icon.extended.Refresh
+import top.yukonga.miuix.kmp.icon.extended.Settings
+import top.yukonga.miuix.kmp.icon.extended.Hide
+import top.yukonga.miuix.kmp.icon.extended.Show
+import top.yukonga.miuix.kmp.icon.extended.Tune
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.squircle.addSquircleRect
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
-class MainActivity : ComponentActivity() {
+private enum class AppTab { HOME, CONFIGURATION }
+
+private enum class AddBrand { CODEX, DEEPSEEK, GLM, KIMI, OPENCODE, SILICON_FLOW, VOLCENGINE, MIMO, STANDARD }
+
+private enum class ActivityPage(val value: String) {
+    ROOT("root"),
+    SETTINGS("settings"),
+    WIDGET_SETTINGS("widget-settings"),
+    WIDGET_UI_SETTINGS("widget-ui-settings"),
+    THEME_SETTINGS("theme-settings"),
+    CONFIGURATION("configuration");
+
+    companion object {
+        fun from(value: String?): ActivityPage = entries.firstOrNull { it.value == value } ?: ROOT
+    }
+}
+
+private const val EXTRA_ACTIVITY_PAGE = "org.orynnx.codexquota.extra.ACTIVITY_PAGE"
+private const val EXTRA_ACTIVITY_BRAND = "org.orynnx.codexquota.extra.ACTIVITY_BRAND"
+internal const val EXTRA_REFRESH_AFTER_RESULT = "org.orynnx.codexquota.extra.REFRESH_AFTER_RESULT"
+
+private class MiuixCardShadowShape(private val cornerRadius: androidx.compose.ui.unit.Dp) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
+        Outline.Generic(
+            Path().apply {
+                addSquircleRect(size.width, size.height, with(density) { cornerRadius.toPx() })
+            },
+        )
+}
+
+private data class PageDataSnapshot(
+    val quotaState: QuotaState? = null,
+    val services: List<BalanceService>? = null,
+    val showCodexQuota: Boolean? = null,
+    val showHealthStatus: Boolean? = null,
+    val showProviderIcons: Boolean? = null,
+    val backgroundEnabled: Boolean? = null,
+    val notificationSyncEnabled: Boolean? = null,
+    val serviceRunning: Boolean? = null,
+)
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+open class MainActivity : ComponentActivity() {
+    private var activityPage = ActivityPage.ROOT
     private var state by mutableStateOf(QuotaState())
     private var message by mutableStateOf("")
-    private var pastedValue by mutableStateOf("")
-    private var pendingSession: AuthSession? = null
     private var showSignOutConfirm by mutableStateOf(false)
-    private var showManualEntry by mutableStateOf(false)
     private var showNotificationEducation by mutableStateOf(false)
     private var backgroundEnabled by mutableStateOf(true)
     private var notificationSyncEnabled by mutableStateOf(true)
     private var refreshing by mutableStateOf(false)
     private var showSettings by mutableStateOf(false)
+    private var showThemeSettings by mutableStateOf(false)
+    private var showWidgetSettings by mutableStateOf(false)
+    private var showWidgetUiSettings by mutableStateOf(false)
+    private var showStylePicker by mutableStateOf(false)
+    private var selectedTab by mutableStateOf(AppTab.HOME)
+    private var showAddServices by mutableStateOf(false)
+    private var addBrand by mutableStateOf<AddBrand?>(null)
+    private var editingDisplaySurfacesServiceId by mutableStateOf<String?>(null)
+    private var selectedConfigBrand by mutableStateOf<String?>(null)
     private var serviceRunning by mutableStateOf(false)
-    private var widgetInstallMessage by mutableStateOf("")
+
     private var balanceServices by mutableStateOf(listOf<BalanceService>())
     private var showBalanceEditor by mutableStateOf(false)
     private var editingBalanceServiceId by mutableStateOf<String?>(null)
@@ -105,13 +264,30 @@ class MainActivity : ComponentActivity() {
     private var balanceIncludeGranted by mutableStateOf(true)
     private var balanceEditorError by mutableStateOf("")
     private var balanceEditorBusy by mutableStateOf(false)
-    private var balanceRefreshingId by mutableStateOf<String?>(null)
     private var deletingBalanceServiceId by mutableStateOf<String?>(null)
     private var pendingSiliconFlowLoginServiceId: String? = null
     private var pendingMimoLoginServiceId: String? = null
+    private var pendingConsoleLogin: Pair<String, BalanceAuthMode>? = null
     private var showCodexQuota by mutableStateOf(true)
     private var showHealthStatus by mutableStateOf(true)
+    private var showProviderIcons by mutableStateOf(true)
+    private var uiStyle by mutableStateOf(UiStyle.MATERIAL)
+    private var materialDynamicColor by mutableStateOf(true)
+    private var themeMode by mutableStateOf(ThemeMode.SYSTEM)
+    private var materialAccent by mutableStateOf(MaterialAccent.BLUE)
+    private var materialPaletteStyle by mutableStateOf(MaterialPaletteStyle.TONAL_SPOT)
+    private var miuixBlur by mutableStateOf(true)
+    private var predictiveBack by mutableStateOf(true)
+    private var widgetPrimaryId by mutableStateOf(WidgetSelectionPreferences.CODEX_ID)
+    private var widgetSecondaryId by mutableStateOf("")
+    private var widgetShowSecondary by mutableStateOf(true)
+    private var widgetHeightInput by mutableStateOf("")
+    private var widgetRecommendedHeight by mutableIntStateOf(0)
+    private var widgetCornerRadiusInput by mutableStateOf("")
     private var receiverRegistered = false
+    private var observerRegistered = false
+    private var firstStart = true
+    private var pageContentReady by mutableStateOf(false)
 
     private val quotaUri = "content://org.orynnx.codexquota/quota".toUri()
     private val quotaObserver by lazy {
@@ -121,6 +297,10 @@ class MainActivity : ComponentActivity() {
                 balanceServices = StandardBalanceRepository.list(this@MainActivity)
                 showCodexQuota = DashboardPreferences.showCodex(this@MainActivity)
                 showHealthStatus = DashboardPreferences.showHealth(this@MainActivity)
+                showProviderIcons = DashboardPreferences.showProviderIcons(this@MainActivity)
+                uiStyle = DashboardPreferences.uiStyle(this@MainActivity)
+                materialDynamicColor = DashboardPreferences.materialDynamicColor(this@MainActivity)
+                loadThemePreferences()
             }
         }
     }
@@ -136,6 +316,17 @@ class MainActivity : ComponentActivity() {
             message = "持续同步正在启动"
         } else {
             message = "未授予通知权限；智能后台刷新仍然可用"
+        }
+    }
+    private val secondaryPageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        loadVisualState()
+        if (activityPage == ActivityPage.ROOT || activityPage == ActivityPage.THEME_SETTINGS) {
+            applyPageData(readPageData(activityPage))
+            pageContentReady = true
+        }
+        if (result.resultCode == RESULT_OK && result.data?.getBooleanExtra(EXTRA_REFRESH_AFTER_RESULT, false) == true) {
+            prepareLiveSync()
+            refresh()
         }
     }
     private val siliconFlowLoginLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -173,50 +364,96 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        activityPage = ActivityPage.from(intent.getStringExtra(EXTRA_ACTIVITY_PAGE))
+        // Some HyperOS launchers create a second launcher activity instead of
+        // foregrounding this app's existing task. While the process is still
+        // warm, discard that duplicate root so the page below it is restored.
+        if (
+            activityPage == ActivityPage.ROOT &&
+            intent.action == Intent.ACTION_MAIN &&
+            intent.hasCategory(Intent.CATEGORY_LAUNCHER) &&
+            !isTaskRoot &&
+            taskWasActiveInThisProcess
+        ) {
+            finish()
+            return
+        }
+        when (activityPage) {
+            ActivityPage.ROOT -> Unit
+            ActivityPage.SETTINGS -> showSettings = true
+            ActivityPage.WIDGET_SETTINGS -> showWidgetSettings = true
+            ActivityPage.WIDGET_UI_SETTINGS -> showWidgetUiSettings = true
+            ActivityPage.THEME_SETTINGS -> showThemeSettings = true
+            ActivityPage.CONFIGURATION -> selectedConfigBrand = when (val brand = intent.getStringExtra(EXTRA_ACTIVITY_BRAND).orEmpty()) {
+                "MIMO" -> PlatformBrand.XIAOMI_MIMO.displayName
+                "标准接口" -> PlatformBrand.CUSTOM_ENDPOINT.displayName
+                else -> brand
+            }
+        }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
-        state = QuotaRepository.current(this)
-        balanceServices = StandardBalanceRepository.list(this)
-        showCodexQuota = DashboardPreferences.showCodex(this)
-        showHealthStatus = DashboardPreferences.showHealth(this)
-        backgroundEnabled = QuotaRepository.backgroundEnabled(this)
-        notificationSyncEnabled = QuotaRepository.notificationSyncEnabled(this)
-        serviceRunning = QuotaForegroundService.running
-        if ((QuotaRepository.signedIn(this) || StandardBalanceRepository.hasAuthenticatedService(this)) && backgroundEnabled) prepareLiveSync()
-
+        loadVisualState()
+        when (activityPage) {
+            ActivityPage.ROOT -> {
+                applyPageData(readPageData(activityPage))
+                pageContentReady = true
+            }
+            ActivityPage.THEME_SETTINGS -> pageContentReady = true
+            ActivityPage.SETTINGS, ActivityPage.WIDGET_SETTINGS, ActivityPage.WIDGET_UI_SETTINGS,
+            ActivityPage.CONFIGURATION -> Unit
+        }
         setContent {
-            OuterViewQuotaTheme {
-                val signedIn = QuotaRepository.signedIn(this@MainActivity)
-                val hasBalanceService = balanceServices.isNotEmpty()
-                BackHandler(showSettings) { showSettings = false }
+            OuterViewQuotaTheme(
+                style = uiStyle,
+                dynamicColor = materialDynamicColor,
+                themeMode = themeMode,
+                materialAccent = materialAccent,
+                materialPaletteStyle = materialPaletteStyle,
+            ) {
+                val hasOverlay = showStylePicker || showAddServices || showBalanceEditor ||
+                    editingDisplaySurfacesServiceId != null || deletingBalanceServiceId != null ||
+                    showSignOutConfirm || showNotificationEducation
+                BackHandler(enabled = hasOverlay, onBack = ::navigateBack)
+                BackHandler(
+                    enabled = activityPage != ActivityPage.ROOT && !predictiveBack && !hasOverlay,
+                    onBack = { finish() },
+                )
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    Crossfade(targetState = signedIn || hasBalanceService || showSettings, label = "auth-root") { authorized ->
-                        if (authorized) SignedInShell() else SignInScreen()
-                    }
+                    AppShell()
                 }
                 if (showSignOutConfirm) SignOutDialog()
                 if (showNotificationEducation) NotificationEducationDialog()
                 if (showBalanceEditor) BalanceServiceEditorDialog()
                 if (deletingBalanceServiceId != null) DeleteBalanceServiceDialog()
+                if (showAddServices) AddServicesDialog()
+                if (editingDisplaySurfacesServiceId != null) DisplaySurfacePickerSheet()
             }
         }
+        if (activityPage == ActivityPage.ROOT && backgroundEnabled) {
+            window.decorView.post {
+                if (QuotaRepository.signedIn(this) || StandardBalanceRepository.hasAuthenticatedService(this)) {
+                    prepareLiveSync()
+                }
+            }
+        }
+        if (!pageContentReady) loadPageStateAsync()
     }
     private val mimoLoginLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val serviceId = pendingMimoLoginServiceId
         pendingMimoLoginServiceId = null
         if (serviceId == null) return@registerForActivityResult
         if (result.resultCode != android.app.Activity.RESULT_OK) {
-            message = "已取消 MIMO 登录"
+            message = "已取消 Xiaomi MIMO 登录"
             return@registerForActivityResult
         }
         val sessionToken = result.data?.getStringExtra(MimoLoginActivity.EXTRA_SESSION_TOKEN).orEmpty()
         if (sessionToken.isBlank()) {
-            message = "登录完成，但未能获取 MIMO 会话信息"
+            message = "登录完成，但未能获取 Xiaomi MIMO 会话信息"
             return@registerForActivityResult
         }
-        message = "正在验证 MIMO 控制台…"
+        message = "正在验证 Xiaomi MIMO 控制台…"
         Thread {
             val connection = runCatching { StandardBalanceRepository.connectMimo(this, serviceId, sessionToken) }
             runOnUiThread {
@@ -226,170 +463,693 @@ class MainActivity : ComponentActivity() {
                     message = "${it.name} 已连接"
                 }.onFailure {
                     loadBalanceServices()
-                    message = "MIMO 登录失败：${it.message ?: "请重试"}"
+                    message = "Xiaomi MIMO 登录失败：${it.message ?: "请重试"}"
                 }
             }
         }.start()
     }
+    private val consoleLoginLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val pending = pendingConsoleLogin
+        pendingConsoleLogin = null
+        if (pending == null) return@registerForActivityResult
+        if (result.resultCode != android.app.Activity.RESULT_OK) {
+            message = "已取消平台登录"
+            return@registerForActivityResult
+        }
+        val sessionToken = result.data?.getStringExtra(ConsoleLoginActivity.EXTRA_SESSION_TOKEN).orEmpty()
+        val capturedBalance = result.data?.getStringExtra(ConsoleLoginActivity.EXTRA_CAPTURED_BALANCE).orEmpty()
+        if (sessionToken.isBlank()) {
+            message = "登录完成，但未能获取平台会话"
+            return@registerForActivityResult
+        }
+        message = "正在验证平台会话…"
+        Thread {
+            val connection = runCatching {
+                StandardBalanceRepository.connectConsoleSession(this, pending.first, sessionToken, capturedBalance)
+            }
+            runOnUiThread {
+                connection.onSuccess {
+                    loadBalanceServices()
+                    prepareLiveSync()
+                    message = "${it.name} 已连接"
+                }.onFailure {
+                    loadBalanceServices()
+                    message = "平台登录失败：${it.message ?: "请重试"}"
+                }
+            }
+        }.start()
+    }
+    private val kimiLoginLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        loadBalanceServices()
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            prepareLiveSync()
+            message = "Kimi 已连接"
+        } else {
+            message = "已取消 Kimi 登录"
+        }
+    }
 
     override fun onStart() {
         super.onStart()
-        state = QuotaRepository.current(this)
-        balanceServices = StandardBalanceRepository.list(this)
-        showCodexQuota = DashboardPreferences.showCodex(this)
-        showHealthStatus = DashboardPreferences.showHealth(this)
-        backgroundEnabled = QuotaRepository.backgroundEnabled(this)
-        notificationSyncEnabled = QuotaRepository.notificationSyncEnabled(this)
-        serviceRunning = QuotaForegroundService.running
+        if (firstStart) firstStart = false else loadPageState()
         if (serviceRunning && message == "持续同步正在启动") message = ""
-        contentResolver.registerContentObserver(quotaUri, true, quotaObserver)
-        ContextCompat.registerReceiver(
-            this,
-            serviceStateReceiver,
-            IntentFilter(QuotaForegroundService.ACTION_STATE),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
-        receiverRegistered = true
+        if (activityPage == ActivityPage.ROOT) {
+            contentResolver.registerContentObserver(quotaUri, true, quotaObserver)
+            observerRegistered = true
+        }
+        if (activityPage == ActivityPage.ROOT || activityPage == ActivityPage.SETTINGS) {
+            ContextCompat.registerReceiver(
+                this,
+                serviceStateReceiver,
+                IntentFilter(QuotaForegroundService.ACTION_STATE),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            receiverRegistered = true
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        taskWasActiveInThisProcess = true
     }
 
     override fun onStop() {
-        contentResolver.unregisterContentObserver(quotaObserver)
+        if (observerRegistered) contentResolver.unregisterContentObserver(quotaObserver)
+        observerRegistered = false
         if (receiverRegistered) unregisterReceiver(serviceStateReceiver)
         receiverRegistered = false
         super.onStop()
     }
 
     @Composable
-    private fun SignedInShell() {
+    private fun AppShell() {
+        val pagerState = rememberPagerState(
+            initialPage = selectedTab.ordinal,
+            pageCount = { AppTab.entries.size },
+        )
+        val coroutineScope = rememberCoroutineScope()
+        if (activityPage == ActivityPage.ROOT) {
+            LaunchedEffect(pagerState.currentPage) {
+                selectedTab = AppTab.entries[pagerState.currentPage]
+            }
+            LaunchedEffect(selectedTab) {
+                if (!pagerState.isScrollInProgress && pagerState.currentPage != selectedTab.ordinal) {
+                    pagerState.scrollToPage(selectedTab.ordinal)
+                }
+            }
+        }
+        val selectTab: (AppTab) -> Unit = { tab ->
+            coroutineScope.launch { pagerState.animateScrollToPage(tab.ordinal) }
+        }
+        val detailBrand = selectedConfigBrand
+        val isThemeSettings = showThemeSettings
+        val isWidgetSettings = showWidgetSettings
+        val isWidgetUiSettings = showWidgetUiSettings
+        val isSettings = showSettings && !isThemeSettings
+        val isDetail = detailBrand != null
+        val isSecondaryPage = isSettings || isThemeSettings || isWidgetSettings || isWidgetUiSettings || isDetail
+        val pageKey = when {
+            isWidgetUiSettings -> "widget-ui-settings"
+            isWidgetSettings -> "widget-settings"
+            isThemeSettings -> "theme-settings"
+            isSettings -> "settings"
+            isDetail -> "detail:${detailBrand.orEmpty()}"
+            else -> "root"
+        }
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixAppShell(
+                detailBrand,
+                isSettings,
+                isThemeSettings,
+                isWidgetSettings,
+                isWidgetUiSettings,
+                isDetail,
+                pagerState,
+                selectTab,
+            )
+            return
+        }
+        val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
+            state = key(pageKey) { rememberMaterialTopAppBarState() },
+        )
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
-                TopAppBar(
+                LargeTopAppBar(
                     navigationIcon = {
-                        if (showSettings) IconButton(onClick = { showSettings = false }) {
-                            Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "返回")
+                        when {
+                            isSecondaryPage -> IconButton(onClick = { finish() }) {
+                                Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "返回")
+                            }
+                            selectedTab == AppTab.HOME -> IconButton(onClick = ::refresh, enabled = !refreshing) {
+                                RefreshIcon()
+                            }
                         }
                     },
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            BrandMark(28.dp)
-                            Spacer(Modifier.width(10.dp))
-                            Column {
-                                Text("OuterView", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    when {
-                                        showSettings -> "SETTINGS"
-                                        QuotaRepository.signedIn(this@MainActivity) -> "CODEX USAGE"
-                                        else -> "BALANCE SERVICES"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
+                        Text(when {
+                            isSettings -> "设置"
+                            isWidgetSettings -> "小组件配置"
+                            isWidgetUiSettings -> "自定义小组件 UI"
+                            isThemeSettings -> "主题设置"
+                            isDetail -> detailBrand.orEmpty()
+                            selectedTab == AppTab.HOME -> "视图"
+                            else -> "配置"
+                        })
                     },
                     actions = {
-                        if (!showSettings) {
-                            IconButton(onClick = ::refresh, enabled = !refreshing) {
-                                Icon(painterResource(R.drawable.ic_refresh), contentDescription = "刷新")
+                        if (!isSecondaryPage) {
+                            IconButton(onClick = { showAddServices = true }) {
+                                Icon(painterResource(R.drawable.ic_add), contentDescription = "添加服务")
                             }
-                            IconButton(onClick = { showSettings = true }) {
+                            IconButton(onClick = { openActivityPage(ActivityPage.SETTINGS) }) {
                                 Icon(painterResource(R.drawable.ic_settings), contentDescription = "设置")
                             }
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
+                    ),
+                    scrollBehavior = scrollBehavior,
                 )
             },
-        ) { padding ->
-            Crossfade(targetState = showSettings, label = "app-page") { settings ->
-                if (settings) SettingsScreen(Modifier.padding(padding)) else DashboardScreen(Modifier.padding(padding))
-            }
-        }
-    }
-
-    @Composable
-    private fun SignInScreen() {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 22.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                BrandMark(30.dp)
-                Spacer(Modifier.width(10.dp))
-                Text("OuterView", style = MaterialTheme.typography.titleMedium)
-            }
-            Spacer(Modifier.height(72.dp))
-            BrandMark(76.dp, prominent = true)
-            Spacer(Modifier.height(28.dp))
-            Text("把 Codex 用量\n带到背屏", style = MaterialTheme.typography.headlineLarge)
-            Spacer(Modifier.height(14.dp))
-            Text(
-                "直接连接你的 OpenAI 账户。无需电脑桥接，也不需要在 Android 上运行 Codex。",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(36.dp))
-            Button(
-                onClick = ::beginOAuth,
-                enabled = pendingSession == null,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Text(if (pendingSession == null) "使用 OpenAI 账户继续" else "等待浏览器授权…")
-            }
-            if (pendingSession != null) {
-                TextButton(onClick = ::cancelOAuth, modifier = Modifier.fillMaxWidth()) { Text("取消本次授权") }
-            }
-            Text(
-                "将在系统浏览器中安全打开授权页面",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            )
-            TextButton(onClick = { showManualEntry = !showManualEntry }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (showManualEntry) "收起高级登录" else "授权遇到问题？")
-            }
-            if (showManualEntry) ManualSignIn()
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { showSettings = true },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Text("配置标准余额服务")
-            }
-            if (message.isNotBlank()) InlineNotice(message, Modifier.padding(top = 12.dp))
-            Spacer(Modifier.height(28.dp))
-            Text(
-                "独立 Companion，由 OuterView 提供，与 OpenAI 无隶属关系。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-
-    @Composable
-    private fun ManualSignIn() {
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        ) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("高级登录", style = MaterialTheme.typography.titleMedium)
-                Text("先开始上方授权，再粘贴回调地址或授权码。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(
-                    value = pastedValue,
-                    onValueChange = { pastedValue = it },
-                    label = { Text("回调地址或授权码") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedButton(onClick = ::submitPasted, enabled = pastedValue.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
-                    Text("提交")
+            bottomBar = {
+                if (!isSecondaryPage) {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        tonalElevation = 0.dp,
+                    ) {
+                        NavigationBarItem(
+                            selected = pagerState.currentPage == AppTab.HOME.ordinal,
+                            onClick = { selectTab(AppTab.HOME) },
+                            icon = { Icon(painterResource(R.drawable.ic_home), contentDescription = "视图") },
+                            label = { Text("视图") },
+                        )
+                        NavigationBarItem(
+                            selected = pagerState.currentPage == AppTab.CONFIGURATION.ordinal,
+                            onClick = { selectTab(AppTab.CONFIGURATION) },
+                            icon = { Icon(Icons.Filled.Tune, contentDescription = "配置") },
+                            label = { Text("配置") },
+                        )
+                    }
+                }
+            },
+            ) { padding ->
+            val contentModifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+            when {
+                activityPage != ActivityPage.ROOT && !pageContentReady -> Box(contentModifier)
+                isThemeSettings -> ThemeSettingsScreen(contentModifier)
+                isWidgetSettings -> WidgetSettingsScreen(contentModifier)
+                isWidgetUiSettings -> WidgetUiSettingsScreen(contentModifier)
+                isSettings -> SettingsScreen(contentModifier)
+                isDetail -> ConfigurationBrandScreen(detailBrand.orEmpty(), contentModifier)
+                else -> HorizontalPager(
+                    state = pagerState,
+                    modifier = contentModifier,
+                ) { page ->
+                    if (page == AppTab.HOME.ordinal) DashboardScreen()
+                    else ConfigurationScreen()
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun MiuixAppShell(
+        detailBrand: String?,
+        isSettings: Boolean,
+        isThemeSettings: Boolean,
+        isWidgetSettings: Boolean,
+        isWidgetUiSettings: Boolean,
+        isDetail: Boolean,
+        pagerState: PagerState,
+        selectTab: (AppTab) -> Unit,
+    ) {
+        val pageKey = when {
+            isWidgetUiSettings -> "widget-ui-settings"
+            isWidgetSettings -> "widget-settings"
+            isThemeSettings -> "theme-settings"
+            isSettings -> "settings"
+            isDetail -> "detail:${detailBrand.orEmpty()}"
+            else -> "root"
+        }
+        val scrollBehavior = MiuixScrollBehavior(
+            state = key(pageKey) { rememberMiuixTopAppBarState() },
+        )
+        val backdrop = rememberMiuixBlurBackdrop()
+        val blurAvailable = miuixBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        val isSecondaryPage = isSettings || isThemeSettings || isWidgetSettings || isWidgetUiSettings || isDetail
+        val barColor = MiuixTheme.colorScheme.surface.copy(alpha = if (blurAvailable) 0.48f else 1f)
+        MiuixScaffold(
+            topBar = {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .miuixBackdropBlur(
+                        backdrop = backdrop,
+                        shape = androidx.compose.ui.graphics.RectangleShape,
+                        blurRadius = 36f,
+                        enabled = miuixBlur,
+                    ),
+                ) {
+                    MiuixTopAppBar(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = barColor,
+                        title = when {
+                            isThemeSettings -> "主题设置"
+                            isWidgetSettings -> "小组件配置"
+                            isWidgetUiSettings -> "自定义小组件 UI"
+                            isSettings -> "设置"
+                            isDetail -> detailBrand.orEmpty()
+                            selectedTab == AppTab.HOME -> "视图"
+                            else -> "配置"
+                        },
+                        largeTitle = when {
+                            isThemeSettings -> "主题设置"
+                            isWidgetSettings -> "小组件配置"
+                            isWidgetUiSettings -> "自定义小组件 UI"
+                            isSettings -> "设置"
+                            isDetail -> detailBrand.orEmpty()
+                            selectedTab == AppTab.HOME -> "视图"
+                            else -> "配置"
+                        },
+                        scrollBehavior = scrollBehavior,
+                        navigationIcon = {
+                            if (isSecondaryPage) {
+                                MiuixIconButton(onClick = { finish() }, holdDownState = true) {
+                                    Icon(MiuixIcons.Regular.Back, contentDescription = "返回")
+                                }
+                            } else if (selectedTab == AppTab.HOME) {
+                                MiuixIconButton(onClick = ::refresh, enabled = !refreshing, holdDownState = true) {
+                                    RefreshIcon(miuix = true)
+                                }
+                            }
+                        },
+                        actions = {
+                            if (!isSecondaryPage) {
+                                MiuixIconButton(onClick = { showAddServices = true }, holdDownState = true) { Icon(MiuixIcons.Regular.Add, "添加服务") }
+                                MiuixIconButton(onClick = { openActivityPage(ActivityPage.SETTINGS) }, holdDownState = true) { Icon(MiuixIcons.Regular.Settings, "设置") }
+                            }
+                        },
+                    )
+                }
+            },
+            bottomBar = {
+                if (!isSecondaryPage) {
+                    MiuixFloatingNavigationBar(
+                        modifier = Modifier.miuixBackdropBlur(
+                            backdrop = backdrop,
+                            shape = RoundedCornerShape(28.dp),
+                            blurRadius = 24f,
+                            enabled = miuixBlur,
+                        ),
+                        color = barColor,
+                        showDivider = false,
+                    ) {
+                        MiuixFloatingNavigationBarItem(
+                            selected = pagerState.currentPage == AppTab.HOME.ordinal,
+                            onClick = { selectTab(AppTab.HOME) },
+                            icon = MiuixIcons.Demibold.Home,
+                            label = "视图",
+                        )
+                        MiuixFloatingNavigationBarItem(
+                            selected = pagerState.currentPage == AppTab.CONFIGURATION.ordinal,
+                            onClick = { selectTab(AppTab.CONFIGURATION) },
+                            icon = MiuixIcons.Demibold.Tune,
+                            label = "配置",
+                        )
+                    }
+                }
+            },
+        ) { padding ->
+            val layoutDirection = LocalLayoutDirection.current
+            val rootPadding = PaddingValues(
+                start = padding.calculateStartPadding(layoutDirection),
+                top = padding.calculateTopPadding(),
+                end = padding.calculateEndPadding(layoutDirection),
+                bottom = 0.dp,
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .miuixBackdropCapture(backdrop)
+                    .background(MiuixTheme.colorScheme.surface),
+            ) {
+                val contentModifier = Modifier
+                    .fillMaxSize()
+                    .padding(if (pageKey == "root") rootPadding else padding)
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                when {
+                    activityPage != ActivityPage.ROOT && !pageContentReady -> Box(contentModifier)
+                    isThemeSettings -> ThemeSettingsScreen(contentModifier)
+                    isWidgetSettings -> WidgetSettingsScreen(contentModifier)
+                    isWidgetUiSettings -> WidgetUiSettingsScreen(contentModifier)
+                    isSettings -> SettingsScreen(contentModifier)
+                    isDetail -> ConfigurationBrandScreen(detailBrand.orEmpty(), contentModifier)
+                    else -> HorizontalPager(
+                        state = pagerState,
+                        modifier = contentModifier,
+                    ) { page ->
+                        if (page == AppTab.HOME.ordinal) DashboardScreen()
+                        else ConfigurationScreen()
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun AppCard(
+        modifier: Modifier = Modifier,
+        shape: androidx.compose.ui.graphics.Shape = MaterialTheme.shapes.large,
+        content: @Composable ColumnScope.() -> Unit,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixCard(modifier = modifier, content = content)
+        } else {
+            Card(
+                modifier = modifier,
+                shape = shape,
+                colors = CardDefaults.cardColors(containerColor = materialCardColor()),
+                content = content,
+            )
+        }
+    }
+
+    @Composable
+    private fun materialCardColor(): Color = MaterialTheme.colorScheme.surfaceContainerLowest
+
+    @Composable
+    private fun groupedMaterialShape(index: Int, total: Int): androidx.compose.ui.graphics.Shape {
+        if (uiStyle == UiStyle.MIUIX || total <= 1) return MaterialTheme.shapes.large
+        val normal = 28.dp
+        val compact = 4.dp
+        return when (index) {
+            0 -> RoundedCornerShape(normal, normal, compact, compact)
+            total - 1 -> RoundedCornerShape(compact, compact, normal, normal)
+            else -> RoundedCornerShape(compact)
+        }
+    }
+
+    @Composable
+    private fun RefreshIcon(miuix: Boolean = false) {
+        val transition = rememberInfiniteTransition(label = "refresh-rotation")
+        val rotation by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(tween(850, easing = LinearEasing)),
+            label = "refresh-angle",
+        )
+        val modifier = Modifier.rotate(if (refreshing) rotation else 0f)
+        if (miuix) Icon(MiuixIcons.Regular.Refresh, contentDescription = "刷新", modifier = modifier)
+        else Icon(painterResource(R.drawable.ic_refresh), contentDescription = "刷新", modifier = modifier)
+    }
+
+    @Composable
+    private fun AppSurface(
+        modifier: Modifier = Modifier,
+        shape: androidx.compose.ui.graphics.Shape = androidx.compose.ui.graphics.RectangleShape,
+        color: Color,
+        border: BorderStroke? = null,
+        content: @Composable () -> Unit,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixSurface(modifier = modifier, shape = shape, color = color, border = border, content = content)
+        } else {
+            Surface(modifier = modifier, shape = shape, color = color, border = border, content = content)
+        }
+    }
+
+    @Composable
+    private fun AppClickableSurface(
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier,
+        shape: androidx.compose.ui.graphics.Shape,
+        color: Color,
+        content: @Composable () -> Unit,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixSurface(onClick = onClick, modifier = modifier, shape = shape, color = color, content = content)
+        } else {
+            Surface(onClick = onClick, modifier = modifier, shape = shape, color = color, content = content)
+        }
+    }
+
+    @Composable
+    private fun AppButton(
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier,
+        enabled: Boolean = true,
+        content: @Composable RowScope.() -> Unit,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixButton(
+                onClick = onClick,
+                modifier = modifier,
+                enabled = enabled,
+                colors = MiuixButtonDefaults.buttonColorsPrimary(contentColor = Color.White),
+                content = content,
+            )
+        } else {
+            Button(
+                onClick = onClick,
+                modifier = modifier,
+                enabled = enabled,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White,
+                ),
+                content = content,
+            )
+        }
+    }
+
+    @Composable
+    private fun AppNeutralButton(
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier,
+        enabled: Boolean = true,
+        content: @Composable RowScope.() -> Unit,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixButton(
+                onClick = onClick,
+                modifier = modifier,
+                enabled = enabled,
+                colors = MiuixButtonDefaults.buttonColors(),
+                content = content,
+            )
+        } else {
+            Button(
+                onClick = onClick,
+                modifier = modifier,
+                enabled = enabled,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                content = content,
+            )
+        }
+    }
+
+    @Composable
+    private fun AppTextButton(
+        text: String,
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier,
+        enabled: Boolean = true,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixButton(
+                onClick = onClick,
+                modifier = modifier,
+                enabled = enabled,
+                colors = MiuixButtonDefaults.buttonColors(),
+            ) { Text(text, color = MaterialTheme.colorScheme.onSurface) }
+        } else {
+            TextButton(onClick = onClick, modifier = modifier, enabled = enabled) { Text(text) }
+        }
+    }
+
+    @Composable
+    private fun AppDangerButton(
+        text: String,
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier,
+        enabled: Boolean = true,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixButton(
+                onClick = onClick,
+                modifier = modifier,
+                enabled = enabled,
+                colors = MiuixButtonDefaults.buttonColors(color = MaterialTheme.colorScheme.error, contentColor = Color.White),
+            ) { Text(text, color = Color.White) }
+        } else {
+            Button(
+                onClick = onClick,
+                modifier = modifier,
+                enabled = enabled,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = Color.White,
+                ),
+            ) { Text(text) }
+        }
+    }
+
+    @Composable
+    private fun AppChoiceChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixButton(
+                onClick = onClick,
+                modifier = modifier,
+                colors = if (selected) MiuixButtonDefaults.buttonColorsPrimary(contentColor = Color.White) else MiuixButtonDefaults.buttonColors(),
+            ) { Text(label, color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface) }
+        } else {
+            FilterChip(
+                selected = selected,
+                onClick = onClick,
+                label = { Text(label) },
+                modifier = modifier,
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = Color.White,
+                ),
+            )
+        }
+    }
+
+    @Composable
+    private fun AppSwitchRow(
+        title: String,
+        subtitle: String,
+        checked: Boolean,
+        onCheckedChange: (Boolean) -> Unit,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixSwitchPreference(
+                title = title,
+                summary = subtitle,
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+            )
+        } else {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.extraSmall,
+                color = materialCardColor(),
+            ) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painterResource(defaultListIcon(title)),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(title, style = MaterialTheme.typography.titleMedium)
+                        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = checked, onCheckedChange = onCheckedChange)
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun AppLinearProgress(progress: Float, modifier: Modifier = Modifier) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixLinearProgressIndicator(progress = progress, modifier = modifier)
+        } else {
+            LinearProgressIndicator(progress = { progress }, modifier = modifier)
+        }
+    }
+
+    @Composable
+    private fun AppTextField(
+        value: String,
+        onValueChange: (String) -> Unit,
+        label: String,
+        modifier: Modifier = Modifier,
+        placeholder: String? = null,
+        singleLine: Boolean = true,
+        keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+        visualTransformation: VisualTransformation = VisualTransformation.None,
+        trailingIcon: (@Composable (() -> Unit))? = null,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixTextField(
+                value = value,
+                onValueChange = onValueChange,
+                label = if (value.isBlank()) placeholder ?: label else label,
+                modifier = modifier,
+                useLabelAsPlaceholder = placeholder != null,
+                singleLine = singleLine,
+                keyboardOptions = keyboardOptions,
+                visualTransformation = visualTransformation,
+                trailingIcon = trailingIcon,
+            )
+        } else {
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                label = { Text(label) },
+                placeholder = placeholder?.let { { Text(it) } },
+                modifier = modifier,
+                singleLine = singleLine,
+                keyboardOptions = keyboardOptions,
+                visualTransformation = visualTransformation,
+                trailingIcon = trailingIcon,
+            )
+        }
+    }
+
+    @Composable
+    private fun StyleAlertDialog(
+        title: String,
+        summary: String? = null,
+        onDismissRequest: () -> Unit,
+        body: @Composable () -> Unit,
+        confirmButton: @Composable () -> Unit = {},
+        dismissButton: @Composable () -> Unit = {},
+        singleAction: Boolean = false,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixWindowDialog(
+                title = title,
+                summary = summary,
+                show = true,
+                onDismissRequest = onDismissRequest,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // 先为底部操作区保留完整高度；长内容在剩余区域内滚动，避免按钮被
+                    // WindowDialog 的最大高度压缩到只剩背景而没有文字。
+                    Box(Modifier.weight(1f, fill = false)) { body() }
+                    if (singleAction) {
+                        Box(Modifier.fillMaxWidth()) { confirmButton() }
+                    } else {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Box(Modifier.weight(1f)) { dismissButton() }
+                            Box(Modifier.weight(1f)) { confirmButton() }
+                        }
+                    }
+                }
+            }
+        } else {
+            AlertDialog(
+                onDismissRequest = onDismissRequest,
+                title = { Text(title) },
+                text = body,
+                confirmButton = confirmButton,
+                dismissButton = dismissButton,
+            )
         }
     }
 
@@ -397,55 +1157,288 @@ class MainActivity : ComponentActivity() {
     private fun DashboardScreen(modifier: Modifier = Modifier) {
         val codexSignedIn = QuotaRepository.signedIn(this@MainActivity)
         val showCodex = codexSignedIn && showCodexQuota
-        val visibleBalanceServices = balanceServices.filter { it.visible }
-        Column(
-            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(if (showCodex) "用量" else "余额服务", style = MaterialTheme.typography.headlineMedium)
-                    Text(
-                        if (showCodex) planLabel() else "已选择的服务",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (showCodex) StatusPill() else BalanceStatusPill()
+        val visibleBalanceServices = remember(balanceServices) { balanceServices.filter { it.visible } }
+        val listState = rememberLazyListState()
+        val dragScope = rememberCoroutineScope()
+        val hapticFeedback = LocalHapticFeedback.current
+        val density = LocalDensity.current
+        val reorderHysteresis = LocalViewConfiguration.current.touchSlop
+        // Use a generous activation band so a card can be scrolled while the
+        // finger is still comfortably inside the content area. The loop below
+        // keeps scrolling even when the pointer is held still at the edge.
+        val autoScrollEdge = with(density) { 136.dp.toPx() }
+        val bottomBarClearance = with(density) { if (uiStyle == UiStyle.MIUIX) 108.dp.toPx() else 0f }
+        val maxAutoScrollSpeed = with(density) { 1_800.dp.toPx() }
+        val dragMotionSpec = remember(uiStyle) {
+            if (uiStyle == UiStyle.MIUIX) {
+                folmeSpring<Float>(damping = 0.88f, response = 0.3f)
+            } else {
+                spring(dampingRatio = 0.88f, stiffness = 450f)
             }
+        }
+        val dragShadowShape = remember(uiStyle) {
+            if (uiStyle == UiStyle.MIUIX) MiuixCardShadowShape(16.dp) else RoundedCornerShape(16.dp)
+        }
+        var draggedServiceId by remember { mutableStateOf<String?>(null) }
+        var dragActive by remember { mutableStateOf(false) }
+        var droppingCard by remember { mutableStateOf(false) }
+        var draggedOverlayY by remember { mutableFloatStateOf(0f) }
+        var draggedItemHeight by remember { mutableIntStateOf(0) }
+        var draggedSwapMotion by remember { mutableFloatStateOf(0f) }
+        var draggedPointerY by remember { mutableFloatStateOf(0f) }
 
+        fun clearDrag() {
+            draggedServiceId = null
+            dragActive = false
+            droppingCard = false
+            draggedOverlayY = 0f
+            draggedItemHeight = 0
+            draggedSwapMotion = 0f
+            draggedPointerY = 0f
+        }
+
+        val animatedOverlayY by animateFloatAsState(
+            targetValue = draggedOverlayY,
+            animationSpec = if (dragActive) snap() else dragMotionSpec,
+            label = "balance-card-drop",
+            finishedListener = { if (droppingCard) clearDrag() },
+        )
+        val liftProgress by animateFloatAsState(
+            targetValue = if (dragActive) 1f else 0f,
+            animationSpec = dragMotionSpec,
+            label = "balance-card-lift",
+        )
+
+        fun finishDrag() {
+            val sourceId = draggedServiceId ?: return
+            StandardBalanceRepository.reorder(this@MainActivity, balanceServices.map(BalanceService::id))
+            dragScope.launch {
+                withFrameNanos { }
+                val target = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "balance:$sourceId" }
+                if (target == null) {
+                    clearDrag()
+                } else {
+                    draggedOverlayY = target.offset.toFloat()
+                    droppingCard = true
+                    dragActive = false
+                }
+            }
+        }
+
+        fun moveDraggedService(direction: Float) {
+            val sourceId = draggedServiceId ?: return
+            val draggedCenter = draggedOverlayY + draggedItemHeight / 2f
+            // Keep the reorder source independent from LazyColumn's current
+            // viewport. Cards outside the viewport still participate in the
+            // logical order and must be able to yield their slot while the
+            // list auto-scrolls at an edge.
+            val orderedVisibleIds = balanceServices
+                .asSequence()
+                .filter(BalanceService::visible)
+                .map(BalanceService::id)
+                .toList()
+            val sourceIndex = orderedVisibleIds.indexOf(sourceId)
+            val targetIndex = when {
+                direction > 0f -> sourceIndex + 1
+                direction < 0f -> sourceIndex - 1
+                else -> sourceIndex
+            }
+            val targetId = orderedVisibleIds.getOrNull(targetIndex) ?: return
+            val target = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "balance:$targetId" }
+            val crossedTarget = if (target != null) {
+                val targetCenter = target.offset + target.size / 2f
+                (direction > 0f && draggedCenter > targetCenter) ||
+                    (direction < 0f && draggedCenter < targetCenter)
+            } else {
+                // A target outside the current viewport has no LayoutInfo yet.
+                // Still advance the logical order once the overlay reaches the
+                // edge; otherwise off-screen cards never yield their position.
+                val viewport = listState.layoutInfo
+                val top = viewport.viewportStartOffset.toFloat()
+                val bottom = viewport.viewportEndOffset.toFloat() - bottomBarClearance
+                (direction > 0f && draggedCenter > bottom - with(density) { 24.dp.toPx() }) ||
+                    (direction < 0f && draggedCenter < top + with(density) { 24.dp.toPx() })
+            }
+            if (crossedTarget) {
+                previewBalanceServiceOrder(sourceId, targetId)
+                draggedSwapMotion = 0f
+            }
+        }
+
+        LaunchedEffect(draggedServiceId, dragActive, uiStyle) {
+            if (draggedServiceId == null || !dragActive) return@LaunchedEffect
+            var previousFrame = 0L
+            while (draggedServiceId != null && dragActive) {
+                val frame = withFrameNanos { it }
+                if (previousFrame == 0L) {
+                    previousFrame = frame
+                    continue
+                }
+                val elapsedSeconds = ((frame - previousFrame) / 1_000_000_000f).coerceAtMost(0.032f)
+                previousFrame = frame
+                val layoutInfo = listState.layoutInfo
+                val topBoundary = layoutInfo.viewportStartOffset.toFloat()
+                val bottomBoundary = layoutInfo.viewportEndOffset.toFloat() - bottomBarClearance
+                val velocity = when {
+                    draggedPointerY < topBoundary + autoScrollEdge -> {
+                        val strength = ((topBoundary + autoScrollEdge - draggedPointerY) / autoScrollEdge).coerceIn(0f, 1f)
+                        -maxAutoScrollSpeed * strength * strength
+                    }
+                    draggedPointerY > bottomBoundary - autoScrollEdge -> {
+                        val strength = ((draggedPointerY - (bottomBoundary - autoScrollEdge)) / autoScrollEdge).coerceIn(0f, 1f)
+                        maxAutoScrollSpeed * strength * strength
+                    }
+                    else -> 0f
+                }
+                if (velocity != 0f) {
+                    val consumed = listState.scrollBy(velocity * elapsedSeconds)
+                    if (consumed != 0f) moveDraggedService(velocity)
+                }
+            }
+        }
+
+        Box(modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                contentPadding = PaddingValues(
+                    start = 20.dp,
+                    top = 14.dp,
+                    end = 20.dp,
+                    bottom = if (uiStyle == UiStyle.MIUIX) 112.dp else 14.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
             if (showCodex) {
                 when {
                     state.hasWeekly -> {
-                        QuotaHero("本周剩余", state.weeklyRemaining, state.weeklyReset, state.weeklyResetAtEpoch)
-                        if (state.hasFiveHour) QuotaCompact("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
+                        item("codex-weekly") {
+                            QuotaHero("本周剩余", state.weeklyRemaining, state.weeklyReset, state.weeklyResetAtEpoch)
+                        }
+                        if (state.hasFiveHour) item("codex-five-hour") {
+                            QuotaCompact("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
+                        }
                     }
-                    state.hasFiveHour -> QuotaHero("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
-                    else -> EmptyQuotaState()
+                    state.hasFiveHour -> item("codex-five-hour") {
+                        QuotaHero("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
+                    }
+                    else -> item("codex-empty") { EmptyQuotaState() }
                 }
-                if (showHealthStatus) SyncHealthRow()
+                if (showHealthStatus) item("codex-health") { SyncHealthRow() }
             }
 
             if (visibleBalanceServices.isNotEmpty()) {
-                BalanceServiceCards(visibleBalanceServices, manage = false)
+                items(
+                    items = visibleBalanceServices,
+                    key = { "balance:${it.id}" },
+                    contentType = { it.displayKind },
+                ) { service ->
+                    val key = "balance:${service.id}"
+                    val heldByOverlay = draggedServiceId == service.id
+                    val placementModifier = if (heldByOverlay) {
+                        Modifier
+                    } else {
+                        Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
+                    }
+                    BalanceServiceCard(
+                        service = service,
+                        manage = false,
+                        modifier = placementModifier
+                            .graphicsLayer {
+                                alpha = if (heldByOverlay) 0f else 1f
+                            },
+                        onDragStart = dragStart@{ pointerY ->
+                            val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key }
+                                ?: return@dragStart
+                            draggedServiceId = service.id
+                            dragActive = true
+                            droppingCard = false
+                            draggedOverlayY = itemInfo.offset.toFloat()
+                            draggedItemHeight = itemInfo.size
+                            draggedSwapMotion = 0f
+                            draggedPointerY = itemInfo.offset + pointerY
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
+                        onDrag = drag@{ delta ->
+                            if (draggedServiceId != service.id || !dragActive) return@drag
+                            draggedOverlayY += delta
+                            draggedSwapMotion += delta
+                            draggedPointerY += delta
+                            if (abs(draggedSwapMotion) < reorderHysteresis) return@drag
+                            moveDraggedService(draggedSwapMotion)
+                        },
+                        onDragEnd = ::finishDrag,
+                    )
+                }
             } else if (!showCodex) {
-                NoVisibleQuotaState()
+                item("no-visible-service") { NoVisibleQuotaState() }
             }
-            if (message.isNotBlank() && message != state.status) InlineNotice(message)
-            Spacer(Modifier.height(20.dp))
+            if (message.isNotBlank() && message != state.status) {
+                item("dashboard-message") { InlineNotice(message) }
+            }
+            item("dashboard-bottom-space") { Spacer(Modifier.height(20.dp)) }
+            }
+
+            val overlayService = draggedServiceId?.let { id -> visibleBalanceServices.firstOrNull { it.id == id } }
+            if (overlayService != null) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .offset { androidx.compose.ui.unit.IntOffset(0, animatedOverlayY.toInt()) }
+                        .padding(horizontal = 20.dp)
+                        .zIndex(2f)
+                        .graphicsLayer {
+                            val scale = 1f + 0.018f * liftProgress
+                            scaleX = scale
+                            scaleY = scale
+                        },
+                ) {
+                    val cardContent: @Composable () -> Unit = {
+                        BalanceServiceCard(
+                            service = overlayService,
+                            manage = false,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    if (uiStyle == UiStyle.MIUIX) {
+                        MiuixSurface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = dragShadowShape,
+                            color = Color.Transparent,
+                            shadowElevation = 20.dp * liftProgress,
+                            content = cardContent,
+                        )
+                    } else {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = dragShadowShape,
+                            color = Color.Transparent,
+                            shadowElevation = 20.dp * liftProgress,
+                            content = cardContent,
+                        )
+                    }
+                }
+            }
         }
+    }
+
+    private fun previewBalanceServiceOrder(sourceId: String, targetId: String) {
+        val next = balanceServices.toMutableList()
+        val sourceIndex = next.indexOfFirst { it.id == sourceId }
+        val targetIndex = next.indexOfFirst { it.id == targetId }
+        if (sourceIndex < 0 || targetIndex < 0 || sourceIndex == targetIndex) return
+        val service = next.removeAt(sourceIndex)
+        next.add(targetIndex.coerceAtMost(next.size), service)
+        balanceServices = next
     }
 
     @Composable
     private fun NoVisibleQuotaState() {
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        ) {
-            Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("没有选择要显示的配额", style = MaterialTheme.typography.titleMedium)
-                Text("可以在设置 → 显示内容中重新打开需要的卡片。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AppCard {
+            Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("视图还没有服务", style = MaterialTheme.typography.titleMedium)
+                Text("添加服务后，余额和 Token Plan 配额会显示在这里。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                AppNeutralButton(onClick = { showAddServices = true }) { Text("添加服务") }
             }
         }
     }
@@ -453,7 +1446,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun BalanceStatusPill() {
         val active = balanceServices.any { it.visible && it.health == BalanceHealth.FRESH }
-        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+        AppSurface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
             Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(6.dp).background(if (active) QuotaColors.Success else QuotaColors.Warning, CircleShape))
                 Spacer(Modifier.width(7.dp))
@@ -463,11 +1456,15 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun BalanceServiceCards(services: List<BalanceService>, manage: Boolean, showTitle: Boolean = true) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    private fun BalanceServiceCards(
+        services: List<BalanceService>,
+        manage: Boolean,
+        showTitle: Boolean = true,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (uiStyle == UiStyle.MATERIAL) 3.dp else 10.dp)) {
             if (showTitle) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("余额服务", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Text("服务", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     if (!manage) Text("${services.size} 个", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -478,123 +1475,167 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun BalanceServiceCard(service: BalanceService, manage: Boolean, index: Int = 0, total: Int = 1) {
+    private fun BalanceServiceCard(
+        service: BalanceService,
+        manage: Boolean,
+        index: Int = 0,
+        total: Int = 1,
+        modifier: Modifier = Modifier,
+        onDragStart: ((Float) -> Unit)? = null,
+        onDrag: ((Float) -> Unit)? = null,
+        onDragEnd: (() -> Unit)? = null,
+    ) {
         val statusColor = when (service.health) {
             BalanceHealth.FRESH -> QuotaColors.Success
             BalanceHealth.CACHED -> QuotaColors.Warning
             BalanceHealth.AUTH_REQUIRED, BalanceHealth.ERROR -> QuotaColors.Error
             BalanceHealth.NOT_CONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant
         }
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        val displayValue = remember(service) { displayBalance(service) }
+        val tokenPlanProgress = remember(service) {
+            if (service.displayKind != BalanceDisplayKind.TOKEN_PLAN) return@remember null
+            val totalCredits = service.total.toBigDecimalOrNull()
+            val remainingCredits = service.balance.toBigDecimalOrNull()
+            val usedCredits = service.used.toBigDecimalOrNull()
+                ?: totalCredits?.subtract(remainingCredits ?: java.math.BigDecimal.ZERO)
+            val progressCredits = if (service.tokenPlanDisplay == TokenPlanDisplay.REMAINING) remainingCredits else usedCredits
+            if (totalCredits != null && progressCredits != null && totalCredits.signum() > 0) {
+                progressCredits.divide(totalCredits, 4, java.math.RoundingMode.HALF_UP).toFloat().coerceIn(0f, 1f)
+            } else {
+                null
+            }
+        }
+        val detailText = remember(service) { tokenPlanDetail(service) }
+        val serviceBrand = remember(service.authMode) { platformBrand(service.authMode) }
+        val currentOnDragStart by rememberUpdatedState(onDragStart)
+        val currentOnDrag by rememberUpdatedState(onDrag)
+        val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+        val dragModifier = if (!manage && onDragStart != null && onDrag != null && onDragEnd != null) {
+            Modifier.pointerInput(service.id) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { position -> currentOnDragStart?.invoke(position.y) },
+                    onDragEnd = { currentOnDragEnd?.invoke() },
+                    onDragCancel = { currentOnDragEnd?.invoke() },
+                ) { change, amount ->
+                    change.consume()
+                    currentOnDrag?.invoke(amount.y)
+                }
+            }
+        } else Modifier
+        AppCard(
+            modifier = modifier.then(dragModifier),
+            shape = if (manage) groupedMaterialShape(index, total) else MaterialTheme.shapes.large,
         ) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(8.dp).background(statusColor, CircleShape))
-                    Spacer(Modifier.width(9.dp))
+                    if (showProviderIcons || showHealthStatus) {
+                        Box(Modifier.size(if (showProviderIcons) 25.dp else 7.dp)) {
+                            if (showProviderIcons) PlatformLogo(serviceBrand, 24.dp)
+                            if (showHealthStatus) {
+                                Box(
+                                    Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(7.dp)
+                                        .border(1.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                                        .background(statusColor, CircleShape),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(if (showProviderIcons) 10.dp else 6.dp))
+                    }
                     Text(service.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 }
                 Text(service.endpoint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (manage) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("启用此余额服务", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        Switch(
-                            checked = service.visible,
-                            onCheckedChange = { checked ->
-                                StandardBalanceRepository.setVisible(this@MainActivity, service.id, checked)
+                    SettingsSwitchRow(
+                        title = "启用此服务",
+                        subtitle = "关闭后不会显示在视图中",
+                        checked = service.visible,
+                        onCheckedChange = { checked ->
+                            StandardBalanceRepository.setVisible(this@MainActivity, service.id, checked)
+                            loadBalanceServices()
+                        },
+                    )
+                    SettingsActionRow(
+                        icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
+                        title = "背屏显示位置",
+                        subtitle = service.displaySurfaces
+                            .map(BalanceSurface::shortLabel)
+                            .ifEmpty { listOf("未选择") }
+                            .joinToString("、"),
+                        onClick = { editingDisplaySurfacesServiceId = service.id },
+                    )
+                    if (service.displayKind == BalanceDisplayKind.TOKEN_PLAN) {
+                        SettingsSwitchRow(
+                            title = "展示剩余配额",
+                            subtitle = if (service.tokenPlanDisplay == TokenPlanDisplay.REMAINING) "显示剩余百分比" else "当前显示已使用百分比",
+                            checked = service.tokenPlanDisplay == TokenPlanDisplay.REMAINING,
+                            onCheckedChange = { enabled ->
+                                StandardBalanceRepository.setTokenPlanDisplay(
+                                    this@MainActivity,
+                                    service.id,
+                                    if (enabled) TokenPlanDisplay.REMAINING else TokenPlanDisplay.USED,
+                                )
                                 loadBalanceServices()
                             },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
-                                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                                uncheckedBorderColor = MaterialTheme.colorScheme.outline,
-                            ),
                         )
                     }
-                    Spacer(Modifier.height(2.dp))
-                    Text("显示位置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        BalanceSurface.values().forEach { surface ->
-                            val selected = service.visible && surface in service.displaySurfaces
-                            Surface(
-                                modifier = Modifier.weight(1f).height(34.dp).clickable {
-                                    StandardBalanceRepository.setSurfaceEnabled(this@MainActivity, service.id, surface, !selected)
-                                    loadBalanceServices()
-                                },
-                                shape = MaterialTheme.shapes.small,
-                                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        surface.shortLabel,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                }
+                if (!manage) {
+                    if (service.quotaWindows.isNotEmpty()) {
+                        service.quotaWindows.forEachIndexed { windowIndex, window ->
+                            val used = window.used.toBigDecimalOrNull()
+                            val totalValue = window.total.toBigDecimalOrNull()
+                            val usedProgress = if (used != null && totalValue != null && totalValue.signum() > 0) {
+                                used.divide(totalValue, 4, java.math.RoundingMode.HALF_UP).toFloat().coerceIn(0f, 1f)
+                            } else 0f
+                            val progress = if (service.tokenPlanDisplay == TokenPlanDisplay.REMAINING) 1f - usedProgress else usedProgress
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(window.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                Text(
+                                    "${(progress * 100f).roundToInt()}%",
+                                    style = if (windowIndex == 0) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium,
+                                )
+                            }
+                            AppLinearProgress(progress = progress, modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape))
+                            if (window.resetAt.isNotBlank()) {
+                                Text("重置于 ${window.resetAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
+                        Text(service.status, style = MaterialTheme.typography.bodySmall, color = statusColor)
+                    } else {
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(displayValue, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                            Text(service.status, style = MaterialTheme.typography.bodySmall, color = statusColor)
+                        }
+                        if (tokenPlanProgress != null) {
+                            AppLinearProgress(
+                                progress = tokenPlanProgress,
+                                modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
+                            )
+                        }
+                        if (service.detail.isNotBlank()) {
+                            Text(detailText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                    Text(
-                        "外部组件按此顺序显示；关闭总开关后不会出现在任何卡片中",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (service.updatedAt != "--") {
+                        Text("最后更新 ${service.updatedAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(displayBalance(service), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-                    Text(service.status, style = MaterialTheme.typography.bodySmall, color = statusColor)
-                }
-                if (service.displayKind == BalanceDisplayKind.TOKEN_PLAN) {
-                    val totalCredits = service.total.toBigDecimalOrNull()
-                    val remainingCredits = service.balance.toBigDecimalOrNull()
-                    if (totalCredits != null && remainingCredits != null && totalCredits.signum() > 0) {
-                        LinearProgressIndicator(
-                            progress = { remainingCredits.divide(totalCredits, 4, java.math.RoundingMode.HALF_UP).toFloat().coerceIn(0f, 1f) },
-                            modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
-                            color = quotaColor((remainingCredits.divide(totalCredits, 4, java.math.RoundingMode.HALF_UP) * java.math.BigDecimal(100)).toInt()),
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                if (manage) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        AppNeutralButton(
+                            onClick = { openBalanceEditor(service.id) },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("编辑") }
+                        AppDangerButton(
+                            text = "删除",
+                            onClick = { deletingBalanceServiceId = service.id },
+                            modifier = Modifier.weight(1f),
                         )
-                    }
-                }
-                if (service.detail.isNotBlank()) {
-                    Text(service.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (service.updatedAt != "--") {
-                    Text("最后更新 ${service.updatedAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    if (manage) {
-                        TextButton(
-                            onClick = {
-                                StandardBalanceRepository.move(this@MainActivity, service.id, -1)
-                                loadBalanceServices()
-                            },
-                            enabled = index > 0,
-                        ) { Text("上移") }
-                        TextButton(
-                            onClick = {
-                                StandardBalanceRepository.move(this@MainActivity, service.id, 1)
-                                loadBalanceServices()
-                            },
-                            enabled = index + 1 < total,
-                        ) { Text("下移") }
-                    }
-                    TextButton(
-                        onClick = { refreshBalanceService(service.id) },
-                        enabled = balanceRefreshingId == null,
-                    ) { Text(if (balanceRefreshingId == service.id) "更新中…" else "刷新") }
-                    if (manage) {
-                        TextButton(onClick = { openBalanceEditor(service.id) }) { Text("编辑") }
-                        TextButton(onClick = { deletingBalanceServiceId = service.id }) { Text("删除", color = MaterialTheme.colorScheme.error) }
                     }
                 }
             }
@@ -604,21 +1645,21 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun QuotaHero(label: String, value: Int, reset: String, resetAtEpoch: Long) {
         val safe = value.coerceIn(0, 100)
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        ) {
+        AppCard {
             Column(Modifier.padding(horizontal = 22.dp, vertical = 24.dp)) {
-                Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (showProviderIcons) {
+                        PlatformLogo(PlatformBrand.OPENAI_CODEX, 24.dp)
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Spacer(Modifier.height(12.dp))
                 Text("$safe%", style = MaterialTheme.typography.displayLarge)
                 Spacer(Modifier.height(26.dp))
-                LinearProgressIndicator(
-                    progress = { safe / 100f },
+                AppLinearProgress(
+                    progress = safe / 100f,
                     modifier = Modifier.fillMaxWidth().height(7.dp).clip(CircleShape),
-                    color = quotaColor(safe),
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
                 Spacer(Modifier.height(14.dp))
                 Text(
@@ -633,15 +1674,17 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun QuotaCompact(label: String, value: Int, reset: String, resetAtEpoch: Long) {
         val safe = value.coerceIn(0, 100)
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        ) {
+        AppCard {
             Column(Modifier.padding(18.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     Column(Modifier.weight(1f)) {
-                        Text(label, style = MaterialTheme.typography.titleMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (showProviderIcons) {
+                                PlatformLogo(PlatformBrand.OPENAI_CODEX, 24.dp)
+                                Spacer(Modifier.width(10.dp))
+                            }
+                            Text(label, style = MaterialTheme.typography.titleMedium)
+                        }
                         Text(
                             "重置于 ${QuotaResetText.app(reset, resetAtEpoch)}",
                             style = MaterialTheme.typography.bodySmall,
@@ -651,11 +1694,9 @@ class MainActivity : ComponentActivity() {
                     Text("$safe%", style = MaterialTheme.typography.headlineMedium)
                 }
                 Spacer(Modifier.height(16.dp))
-                LinearProgressIndicator(
-                    progress = { safe / 100f },
+                AppLinearProgress(
+                    progress = safe / 100f,
                     modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
-                    color = quotaColor(safe),
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
             }
         }
@@ -663,11 +1704,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun EmptyQuotaState() {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        ) {
+        AppCard {
             Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 BrandMark(52.dp, prominent = true)
                 Spacer(Modifier.height(20.dp))
@@ -692,7 +1729,7 @@ class MainActivity : ComponentActivity() {
             QuotaHealth.AUTH_REQUIRED -> Triple(QuotaColors.Error, "授权已过期", "请重新连接 OpenAI")
             QuotaHealth.SIGNED_OUT -> Triple(MaterialTheme.colorScheme.onSurfaceVariant, "未连接", "")
         }
-        Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
+        AppCard {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(8.dp).background(color, CircleShape))
                 Spacer(Modifier.width(12.dp))
@@ -705,10 +1742,431 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun brandLabel(mode: BalanceAuthMode): String = platformBrand(mode).displayName
+
+    private fun serviceTypeLabel(mode: BalanceAuthMode): String = when (mode) {
+        BalanceAuthMode.VOLCENGINE_CODING_PLAN, BalanceAuthMode.KIMI, BalanceAuthMode.GLM_CODING_PLAN -> "Coding Plan"
+        BalanceAuthMode.KIMI_BALANCE -> "账户余额"
+        BalanceAuthMode.VOLCENGINE_AGENT_PLAN -> "Agent Plan"
+        BalanceAuthMode.OPENCODE_ZEN -> "Zen 账户余额"
+        BalanceAuthMode.OPENCODE_GO -> "Go 配额"
+        BalanceAuthMode.MIMO_TOKEN_PLAN -> "Token Plan"
+        else -> "账户余额"
+    }
+
+    @Composable
+    private fun ConfigurationScreen(modifier: Modifier = Modifier) {
+        val codexConnected = QuotaRepository.signedIn(this@MainActivity)
+        val brands = balanceServices.map { brandLabel(it.authMode) }.distinct()
+        Column(
+            modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 20.dp, top = 14.dp, end = 20.dp, bottom = if (uiStyle == UiStyle.MIUIX) 112.dp else 14.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            SettingsSection("已添加服务") {
+                if (codexConnected) {
+                    SettingsActionRow(
+                        icon = if (showProviderIcons) ({ PlatformLogo(PlatformBrand.OPENAI_CODEX, 26.dp) }) else null,
+                        title = "OpenAI Codex",
+                        subtitle = "5 小时配额 | 周配额",
+                        onClick = { openActivityPage(ActivityPage.CONFIGURATION, "OpenAI Codex") },
+                        keepLeadingInMiuix = showProviderIcons,
+                    )
+                    if (brands.isNotEmpty()) SettingsDivider()
+                }
+                brands.forEachIndexed { index, brand ->
+                    val platform = PlatformBrand.entries.first { it.displayName == brand }
+                    val includedServices = balanceServices
+                        .asSequence()
+                        .filter { brandLabel(it.authMode) == brand }
+                        .map { serviceTypeLabel(it.authMode) }
+                        .distinct()
+                        .joinToString(" | ")
+                    SettingsActionRow(
+                        icon = if (showProviderIcons) ({ PlatformLogo(platform, 26.dp) }) else null,
+                        title = brand,
+                        subtitle = includedServices,
+                        onClick = { openActivityPage(ActivityPage.CONFIGURATION, brand) },
+                        keepLeadingInMiuix = showProviderIcons,
+                    )
+                    if (index + 1 < brands.size) SettingsDivider()
+                }
+                if (!codexConnected && brands.isEmpty()) {
+                    Text("还没有添加服务", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun ConfigurationBrandScreen(brand: String, modifier: Modifier = Modifier) {
+        if (brand == "OpenAI Codex") {
+            Column(
+                modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                SettingsSection("服务设置") {
+                    SettingsSwitchRow(
+                        title = "启用 Codex 配额",
+                    subtitle = if (showCodexQuota) "视图显示 Codex 配额" else "视图隐藏，但仍可后台刷新",
+                        checked = showCodexQuota,
+                        onCheckedChange = { enabled ->
+                            showCodexQuota = enabled
+                            DashboardPreferences.setShowCodex(this@MainActivity, enabled)
+                        },
+                    )
+                    SettingsDivider()
+                    SettingsActionRow(
+                        icon = { Icon(painterResource(R.drawable.ic_refresh), null) },
+                        title = "重新授权",
+                        subtitle = "在 Codex 服务中更新 OpenAI 登录",
+                        onClick = {
+                            startCodexLogin()
+                        },
+                    )
+                    SettingsDivider()
+                    SettingsActionRow(
+                        icon = { Icon(painterResource(R.drawable.ic_shield), null) },
+                        title = "隐私与凭证",
+                        subtitle = "OAuth 凭证由 Android Keystore 加密",
+                        onClick = null,
+                        showChevron = false,
+                    )
+                }
+                AppTextButton(
+                    text = "退出 OpenAI 登录",
+                    onClick = { showSignOutConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            val services = balanceServices.filter { brandLabel(it.authMode) == brand }
+            Column(
+                modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                if (services.isEmpty()) {
+                    Text("该品牌暂无服务", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    BalanceServiceCards(services, manage = true, showTitle = false)
+                }
+                AppNeutralButton(onClick = {
+                    addBrand = when (brand) {
+                        "DeepSeek" -> AddBrand.DEEPSEEK
+                        "SiliconFlow" -> AddBrand.SILICON_FLOW
+                        "火山引擎" -> AddBrand.VOLCENGINE
+                        "OpenCode" -> AddBrand.OPENCODE
+                        "Kimi" -> AddBrand.KIMI
+                        "GLM" -> AddBrand.GLM
+                        "Xiaomi MIMO" -> AddBrand.MIMO
+                        else -> AddBrand.STANDARD
+                    }
+                    showAddServices = true
+                }, modifier = Modifier.fillMaxWidth()) { Text("添加 $brand 服务") }
+            }
+        }
+    }
+
+    @Composable
+    private fun AddServicesDialog() {
+        val selected = addBrand
+        val title = when (selected) {
+            null -> "添加服务"
+            AddBrand.CODEX -> "添加 OpenAI Codex"
+            AddBrand.DEEPSEEK -> "添加 DeepSeek"
+            AddBrand.SILICON_FLOW -> "添加 SiliconFlow"
+            AddBrand.VOLCENGINE -> "添加火山引擎"
+            AddBrand.OPENCODE -> "添加 OpenCode"
+            AddBrand.KIMI -> "添加 Kimi"
+            AddBrand.GLM -> "添加 GLM"
+            AddBrand.MIMO -> "添加 Xiaomi MIMO"
+            AddBrand.STANDARD -> "添加自定义接口"
+        }
+        val close = {
+            if (addBrand == null) showAddServices = false else addBrand = null
+        }
+
+        @Composable
+        fun AddServicesBody() {
+                AnimatedContent(
+                    targetState = selected,
+                    label = "add-service-step",
+                ) { step ->
+                    Column(
+                        Modifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(if (uiStyle == UiStyle.MATERIAL) 3.dp else 8.dp),
+                    ) {
+                        if (step == null) {
+                            AddBrandOption("DeepSeek", "账户余额", AddBrand.DEEPSEEK, 0, 9)
+                            AddBrandOption("GLM", "账户余额 | Coding Plan", AddBrand.GLM, 1, 9)
+                            AddBrandOption("Kimi", "账户余额 | Coding Plan", AddBrand.KIMI, 2, 9)
+                            AddBrandOption("OpenAI Codex", "5 小时配额 | 周配额", AddBrand.CODEX, 3, 9)
+                            AddBrandOption("OpenCode", "Zen 账户余额 | Go 配额", AddBrand.OPENCODE, 4, 9)
+                            AddBrandOption("SiliconFlow", "账户余额", AddBrand.SILICON_FLOW, 5, 9)
+                            AddBrandOption("火山引擎", "账户余额 | Coding Plan | Agent Plan", AddBrand.VOLCENGINE, 6, 9)
+                            AddBrandOption("Xiaomi MIMO", "账户余额 | Token Plan", AddBrand.MIMO, 7, 9)
+                            AddBrandOption("自定义接口", "账户余额", AddBrand.STANDARD, 8, 9)
+                        } else when (step) {
+                            AddBrand.CODEX -> AddServiceOption("Codex 用量与配额", "打开独立 Codex 登录页", 0, 1) {
+                                showAddServices = false
+                                addBrand = null
+                                startCodexLogin()
+                            }
+                            AddBrand.DEEPSEEK -> AddServiceOption("账户余额", "DeepSeek API Key", 0, 1) {
+                                showAddServices = false
+                                addBrand = null
+                                openBalanceEditor(null, BalanceAuthMode.DEEPSEEK_API_KEY)
+                            }
+                            AddBrand.SILICON_FLOW -> AddServiceOption("账户余额", "内置浏览器登录 | 控制台钱包", 0, 1) {
+                                showAddServices = false
+                                addBrand = null
+                                openBalanceEditor(null, BalanceAuthMode.SILICONFLOW_CONSOLE)
+                            }
+                            AddBrand.VOLCENGINE -> {
+                                AddServiceOption("账户余额", "火山引擎账户可用余额", 0, 3) {
+                                    showAddServices = false; addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.VOLCENGINE_BALANCE)
+                                }
+                                AddServiceOption("Coding Plan", "5 小时 | 周 | 月配额", 1, 3) {
+                                    showAddServices = false; addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.VOLCENGINE_CODING_PLAN)
+                                }
+                                AddServiceOption("Agent Plan", "5 小时 | 周 | 月配额", 2, 3) {
+                                    showAddServices = false; addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.VOLCENGINE_AGENT_PLAN)
+                                }
+                            }
+                            AddBrand.OPENCODE -> {
+                                AddServiceOption("Zen 账户余额", "OpenCode 控制台账户余额", 0, 2) {
+                                    showAddServices = false; addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.OPENCODE_ZEN)
+                                }
+                                AddServiceOption("Go 配额", "5 小时 | 周 | 月配额", 1, 2) {
+                                    showAddServices = false; addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.OPENCODE_GO)
+                                }
+                            }
+                            AddBrand.KIMI -> {
+                                AddServiceOption("账户余额", "Kimi API Key", 0, 2) {
+                                    showAddServices = false; addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.KIMI_BALANCE)
+                                }
+                                AddServiceOption("Coding Plan", "5 小时 | 周配额", 1, 2) {
+                                    showAddServices = false; addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.KIMI)
+                                }
+                            }
+                            AddBrand.GLM -> {
+                                AddServiceOption("账户余额", "智谱开放平台账户余额", 0, 2) {
+                                    showAddServices = false; addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.GLM_BALANCE)
+                                }
+                                AddServiceOption("Coding Plan", "5 小时 | 周配额", 1, 2) {
+                                    showAddServices = false; addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.GLM_CODING_PLAN)
+                                }
+                            }
+                            AddBrand.MIMO -> {
+                                AddServiceOption("账户余额", "人民币现金余额 | 赠送余额", 0, 2) {
+                                    showAddServices = false
+                                    addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.MIMO_BALANCE)
+                                }
+                                AddServiceOption("Token Plan 配额", "显示 Credits 剩余百分比与有效期", 1, 2) {
+                                    showAddServices = false
+                                    addBrand = null
+                                    openBalanceEditor(null, BalanceAuthMode.MIMO_TOKEN_PLAN)
+                                }
+                            }
+                            AddBrand.STANDARD -> AddServiceOption("账户余额", "自定义 Endpoint | 邮箱密码", 0, 1) {
+                                showAddServices = false
+                                addBrand = null
+                                openBalanceEditor(null)
+                            }
+                        }
+                    }
+                }
+        }
+
+        if (uiStyle == UiStyle.MATERIAL) {
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
+                onDismissRequest = { showAddServices = false; addBrand = null },
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                tonalElevation = 2.dp,
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 24.dp)
+                        .padding(top = 4.dp, bottom = 16.dp),
+                ) {
+                    Text(title, style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.height(16.dp))
+                    Box(Modifier.heightIn(max = 560.dp)) { AddServicesBody() }
+                    Spacer(Modifier.height(16.dp))
+                    FilledTonalButton(
+                        onClick = close,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    ) { Text(if (selected == null) "关闭" else "返回") }
+                }
+            }
+        } else {
+            MiuixWindowBottomSheet(
+                show = true,
+                title = title,
+                onDismissRequest = { showAddServices = false; addBrand = null },
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 620.dp)
+                        .padding(bottom = 12.dp),
+                ) {
+                    AddServicesBody()
+                    Spacer(Modifier.height(12.dp))
+                    AppNeutralButton(
+                        onClick = close,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (selected == null) "关闭" else "返回") }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun DisplaySurfacePickerSheet() {
+        val serviceId = editingDisplaySurfacesServiceId ?: return
+        val service = balanceServices.firstOrNull { it.id == serviceId } ?: run {
+            editingDisplaySurfacesServiceId = null
+            return
+        }
+        val dismiss = { editingDisplaySurfacesServiceId = null }
+
+        @Composable
+        fun SurfaceRows() {
+            Column(verticalArrangement = Arrangement.spacedBy(if (uiStyle == UiStyle.MATERIAL) 3.dp else 0.dp)) {
+                BalanceSurface.values().forEach { surface ->
+                    val checked = surface in service.displaySurfaces
+                    val update = {
+                        StandardBalanceRepository.setSurfaceEnabled(this@MainActivity, service.id, surface, !checked)
+                        loadBalanceServices()
+                    }
+                    if (uiStyle == UiStyle.MIUIX) {
+                        MiuixCheckboxPreference(
+                            title = surface.shortLabel,
+                            summary = surface.label,
+                            checked = checked,
+                            checkboxLocation = top.yukonga.miuix.kmp.preference.CheckboxLocation.End,
+                            onCheckedChange = { update() },
+                        )
+                    } else {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable(onClick = update),
+                            shape = MaterialTheme.shapes.medium,
+                            color = materialCardColor(),
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(surface.shortLabel, style = MaterialTheme.typography.titleMedium)
+                                    Text(surface.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Checkbox(checked = checked, onCheckedChange = { update() })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixWindowBottomSheet(
+                show = true,
+                title = "背屏显示位置",
+                onDismissRequest = dismiss,
+            ) {
+                Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) { SurfaceRows() }
+            }
+        } else {
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
+                onDismissRequest = dismiss,
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                ) {
+                    Text("背屏显示位置", style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.height(16.dp))
+                    SurfaceRows()
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun AddBrandOption(title: String, subtitle: String, brand: AddBrand, index: Int, total: Int) {
+        val platform = when (brand) {
+            AddBrand.CODEX -> PlatformBrand.OPENAI_CODEX
+            AddBrand.DEEPSEEK -> PlatformBrand.DEEPSEEK
+            AddBrand.SILICON_FLOW -> PlatformBrand.SILICON_FLOW
+            AddBrand.VOLCENGINE -> PlatformBrand.VOLCENGINE
+            AddBrand.OPENCODE -> PlatformBrand.OPENCODE
+            AddBrand.KIMI -> PlatformBrand.KIMI
+            AddBrand.GLM -> PlatformBrand.GLM
+            AddBrand.MIMO -> PlatformBrand.XIAOMI_MIMO
+            AddBrand.STANDARD -> PlatformBrand.CUSTOM_ENDPOINT
+        }
+        AddServiceOption(
+            title = title,
+            subtitle = subtitle,
+            index = index,
+            total = total,
+            leading = if (showProviderIcons) ({ PlatformLogo(platform, 28.dp) }) else null,
+            onClick = { addBrand = brand },
+        )
+    }
+
+    @Composable
+    private fun AddServiceOption(
+        title: String,
+        subtitle: String,
+        index: Int,
+        total: Int,
+        leading: (@Composable () -> Unit)? = null,
+        onClick: () -> Unit,
+    ) {
+        AppClickableSurface(onClick = onClick, color = materialCardColor(), shape = groupedMaterialShape(index, total)) {
+            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (leading != null) {
+                    leading()
+                    Spacer(Modifier.width(12.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null)
+            }
+        }
+    }
+
     @Composable
     private fun StatusPill() {
         val active = state.health == QuotaHealth.FRESH || state.health == QuotaHealth.EMPTY
-        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+        AppSurface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
             Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(6.dp).background(if (active) QuotaColors.Success else QuotaColors.Warning, CircleShape))
                 Spacer(Modifier.width(7.dp))
@@ -725,27 +2183,46 @@ class MainActivity : ComponentActivity() {
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            Text("设置", style = MaterialTheme.typography.headlineMedium)
-
-            SettingsSection("显示内容") {
+            SettingsSection("界面") {
                 SettingsSwitchRow(
-                    title = "显示 Codex 配额",
-                    subtitle = if (showCodexQuota) "首页显示 OpenAI Codex 配额卡片" else "已隐藏；不会停止 Codex 刷新",
-                    checked = showCodexQuota,
+                    title = "模型商图标",
+                    subtitle = if (showProviderIcons) "在视图、配置和添加服务中显示平台图标" else "已隐藏平台图标",
+                    checked = showProviderIcons,
                     onCheckedChange = { enabled ->
-                        showCodexQuota = enabled
-                        DashboardPreferences.setShowCodex(this@MainActivity, enabled)
+                        showProviderIcons = enabled
+                        DashboardPreferences.setShowProviderIcons(this@MainActivity, enabled)
                     },
                 )
                 SettingsDivider()
                 SettingsSwitchRow(
                     title = "显示健康状态",
-                    subtitle = if (showHealthStatus) "显示首页底部的同步健康状态" else "已隐藏；不会停止后台同步",
+                    subtitle = if (showHealthStatus) "在卡片和小组件标题前显示红绿状态点" else "已隐藏状态点；不会停止后台同步",
                     checked = showHealthStatus,
                     onCheckedChange = { enabled ->
                         showHealthStatus = enabled
                         DashboardPreferences.setShowHealth(this@MainActivity, enabled)
+                        QuotaAppWidgetProvider.updateAll(this@MainActivity)
                     },
+                )
+            }
+
+            SettingsSection("小组件") {
+                SettingsActionRow(
+                    icon = { Icon(painterResource(R.drawable.ic_widget), contentDescription = null) },
+                    title = "小组件配置",
+                    subtitle = "服务与自定义界面",
+                    onClick = { openActivityPage(ActivityPage.WIDGET_SETTINGS) },
+                )
+            }
+
+            SettingsSection("主题") {
+                StyleSelectionPreference()
+                SettingsDivider()
+                SettingsActionRow(
+                    icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
+                    title = "主题设置",
+                    subtitle = themeModeLabel(themeMode),
+                    onClick = { openActivityPage(ActivityPage.THEME_SETTINGS) },
                 )
             }
 
@@ -809,104 +2286,6 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            SettingsSection("主屏幕") {
-                SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_widget), null) },
-                    title = "添加配额小组件",
-                    subtitle = if (AppWidgetManager.getInstance(this@MainActivity).isRequestPinAppWidgetSupported) {
-                        "小尺寸显示主窗口，横向展开可显示第二窗口"
-                    } else {
-                        "请长按桌面，从小组件列表中选择 OuterView Quota"
-                    },
-                    onClick = ::requestPinQuotaWidget,
-                )
-                if (widgetInstallMessage.isNotBlank()) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                    Text(
-                        widgetInstallMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    )
-                }
-            }
-
-            SettingsSection("余额服务") {
-                Text(
-                    "每项余额服务可单独选择显示位置；上移或下移会改变各组件中的卡片顺序。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                )
-                if (balanceServices.isNotEmpty()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        BalanceServiceCards(balanceServices, manage = true, showTitle = false)
-                    }
-                    SettingsDivider()
-                }
-                SettingsActionRow(
-                    icon = { Text("+", style = MaterialTheme.typography.titleLarge) },
-                    title = "添加标准余额服务",
-                    subtitle = "配置名称、Endpoint 和邮箱密码",
-                    onClick = { openBalanceEditor(null) },
-                )
-                SettingsDivider()
-                SettingsActionRow(
-                    icon = { Text("D", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
-                    title = "添加 DeepSeek 余额",
-                    subtitle = "API Key · 读取官方账户余额",
-                    onClick = { openBalanceEditor(null, BalanceAuthMode.DEEPSEEK_API_KEY) },
-                )
-                SettingsDivider()
-                SettingsActionRow(
-                    icon = { Text("S", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
-                    title = "添加 SiliconFlow 控制台余额",
-                    subtitle = "内置浏览器登录 · 自动读取控制台钱包",
-                    onClick = { openBalanceEditor(null, BalanceAuthMode.SILICONFLOW_CONSOLE) },
-                )
-                SettingsDivider()
-                SettingsActionRow(
-                    icon = { Text("M", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
-                    title = "添加 MIMO 按量余额",
-                    subtitle = "内置浏览器登录 · 人民币现金与赠送余额",
-                    onClick = { openBalanceEditor(null, BalanceAuthMode.MIMO_BALANCE) },
-                )
-                SettingsDivider()
-                SettingsActionRow(
-                    icon = { Text("M", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
-                    title = "添加 MIMO Token Plan",
-                    subtitle = "内置浏览器登录 · Credits 剩余量与有效期",
-                    onClick = { openBalanceEditor(null, BalanceAuthMode.MIMO_TOKEN_PLAN) },
-                )
-            }
-
-            SettingsSection("账户") {
-                if (QuotaRepository.signedIn(this@MainActivity)) {
-                    SettingsActionRow(
-                        icon = { BrandMark(24.dp) },
-                        title = planLabel(),
-                        subtitle = "OpenAI 账户已授权",
-                        onClick = ::beginOAuth,
-                    )
-                    SettingsDivider()
-                } else {
-                    SettingsActionRow(
-                        icon = { BrandMark(24.dp) },
-                        title = "OpenAI Codex",
-                        subtitle = "未连接；点击开始授权",
-                        onClick = ::beginOAuth,
-                    )
-                    SettingsDivider()
-                }
-                SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_shield), null) },
-                    title = "隐私与凭证",
-                    subtitle = "OAuth 凭证由 Android Keystore 加密",
-                    onClick = null,
-                    showChevron = false,
-                )
-            }
-
             SettingsSection("关于") {
                 SettingsActionRow(
                     icon = { Icon(painterResource(R.drawable.ic_info), null) },
@@ -917,11 +2296,6 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            if (QuotaRepository.signedIn(this@MainActivity)) {
-                TextButton(onClick = { showSignOutConfirm = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("退出 OpenAI 登录", color = MaterialTheme.colorScheme.error)
-                }
-            }
             Text(
                 "OuterView 与 OpenAI 无隶属或赞助关系。Codex 与 OpenAI 是其各自权利人的商标。",
                 style = MaterialTheme.typography.bodySmall,
@@ -932,44 +2306,363 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun WidgetSettingsScreen(modifier: Modifier = Modifier) {
+        val widgetOptions = widgetServiceOptions()
+        val primaryIndex = widgetOptions.indexOfFirst { it.first == widgetPrimaryId }.coerceAtLeast(0)
+        val secondaryOptions = listOf("" to "不显示") + widgetOptions.filter { it.first != widgetPrimaryId }
+        val secondaryIndex = secondaryOptions.indexOfFirst { it.first == widgetSecondaryId }.coerceAtLeast(0)
+        Column(
+            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SettingsSection("小组件") {
+                DropdownSelectionPreference(
+                    title = "主服务",
+                    summary = widgetOptions.getOrNull(primaryIndex)?.second ?: "OpenAI Codex",
+                    items = widgetOptions.map { it.second },
+                    selectedIndex = primaryIndex,
+                    onSelected = { index ->
+                        widgetPrimaryId = widgetOptions.getOrNull(index)?.first ?: WidgetSelectionPreferences.CODEX_ID
+                        if (widgetSecondaryId == widgetPrimaryId) widgetSecondaryId = ""
+                        saveWidgetPreferences()
+                    },
+                )
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = "显示副服务",
+                    subtitle = if (widgetShowSecondary) "2×4 布局左右显示主服务和副服务" else "关闭后所有布局只显示主服务",
+                    checked = widgetShowSecondary,
+                    onCheckedChange = { enabled ->
+                        widgetShowSecondary = enabled
+                        saveWidgetPreferences()
+                    },
+                )
+                AnimatedVisibility(
+                    visible = widgetShowSecondary,
+                    enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                    exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                ) {
+                    Column {
+                        SettingsDivider()
+                        DropdownSelectionPreference(
+                            title = "副服务",
+                            summary = secondaryOptions.getOrNull(secondaryIndex)?.second ?: "不显示",
+                            items = secondaryOptions.map { it.second },
+                            selectedIndex = secondaryIndex,
+                            onSelected = { index ->
+                                widgetSecondaryId = secondaryOptions.getOrNull(index)?.first.orEmpty()
+                                saveWidgetPreferences()
+                            },
+                        )
+                    }
+                }
+                SettingsDivider()
+                SettingsActionRow(
+                    icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
+                    title = "自定义小组件 UI",
+                    subtitle = "高度、圆角",
+                    onClick = { openActivityPage(ActivityPage.WIDGET_UI_SETTINGS) },
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun WidgetUiSettingsScreen(modifier: Modifier = Modifier) {
+        Column(
+            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SettingsSection("界面") {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                    Text("高度（dp）", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    AppTextField(
+                        value = widgetHeightInput,
+                        onValueChange = { input ->
+                            val numeric = input.filter(Char::isDigit)
+                            if (numeric != widgetHeightInput) {
+                                widgetHeightInput = numeric
+                                WidgetHeightPreferences.setCustomInput(this@MainActivity, numeric)
+                                QuotaAppWidgetProvider.updateAll(this@MainActivity)
+                            }
+                        },
+                        label = "高度",
+                        placeholder = "推荐值：${widgetRecommendedHeight.takeIf { it > 0 } ?: 153}",
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "可输入 ${WidgetHeightPreferences.MIN_HEIGHT_DP}–${WidgetHeightPreferences.MAX_HEIGHT_DP}。留空时使用推荐值 ${widgetRecommendedHeight.takeIf { it > 0 } ?: 153} dp；超出范围会在重新进入本页时清空。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                SettingsDivider()
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                    Text("圆角（dp）", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    AppTextField(
+                        value = widgetCornerRadiusInput,
+                        onValueChange = { input ->
+                            val numeric = input.filter(Char::isDigit)
+                            if (numeric != widgetCornerRadiusInput) {
+                                widgetCornerRadiusInput = numeric
+                                WidgetHeightPreferences.setCustomCornerRadiusInput(this@MainActivity, numeric)
+                                QuotaAppWidgetProvider.updateAll(this@MainActivity)
+                            }
+                        },
+                        label = "圆角",
+                        placeholder = "默认值：${WidgetHeightPreferences.DEFAULT_CORNER_RADIUS_DP}",
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "可输入 0–${WidgetHeightPreferences.MAX_CORNER_RADIUS_DP}。留空时使用默认圆角 ${WidgetHeightPreferences.DEFAULT_CORNER_RADIUS_DP} dp；超出范围会在重新进入本页时清空。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun ThemeSettingsScreen(modifier: Modifier = Modifier) {
+        Column(
+            modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            SettingsSection("主题设置") {
+                DropdownSelectionPreference(
+                    title = "主题",
+                    summary = themeModeLabel(themeMode),
+                    items = listOf("跟随系统", "浅色模式", "深色模式"),
+                    selectedIndex = themeMode.ordinal,
+                    onSelected = { index ->
+                        themeMode = ThemeMode.entries[index]
+                        DashboardPreferences.setThemeMode(this@MainActivity, themeMode)
+                    },
+                )
+                SettingsDivider()
+                if (uiStyle == UiStyle.MATERIAL) {
+                    SettingsSwitchRow(
+                        title = "动态取色",
+                        subtitle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            "使用系统壁纸生成 Material 3 配色"
+                        } else {
+                            "需要 Android 12 或更高版本"
+                        },
+                        checked = materialDynamicColor,
+                        onCheckedChange = { enabled ->
+                            materialDynamicColor = enabled
+                            DashboardPreferences.setMaterialDynamicColor(this@MainActivity, enabled)
+                        },
+                    )
+                    AnimatedVisibility(
+                        visible = !materialDynamicColor,
+                        enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                        exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                    ) {
+                        Column {
+                            SettingsDivider()
+                            DropdownSelectionPreference(
+                                title = "强调色",
+                                summary = materialAccentLabel(materialAccent),
+                                items = MaterialAccent.entries.map(::materialAccentLabel),
+                                selectedIndex = materialAccent.ordinal,
+                                onSelected = { index ->
+                                    materialAccent = MaterialAccent.entries[index]
+                                    DashboardPreferences.setMaterialAccent(this@MainActivity, materialAccent)
+                                },
+                            )
+                        }
+                    }
+                    SettingsDivider()
+                    DropdownSelectionPreference(
+                        title = "调色板风格",
+                        summary = materialPaletteLabel(materialPaletteStyle),
+                        items = MaterialPaletteStyle.entries.map(::materialPaletteLabel),
+                        selectedIndex = materialPaletteStyle.ordinal,
+                        onSelected = { index ->
+                            materialPaletteStyle = MaterialPaletteStyle.entries[index]
+                            DashboardPreferences.setMaterialPaletteStyle(this@MainActivity, materialPaletteStyle)
+                        },
+                    )
+                } else {
+                    SettingsSwitchRow(
+                        title = "模糊",
+                        subtitle = "为顶栏与悬浮底栏启用高斯背景模糊",
+                        checked = miuixBlur,
+                        onCheckedChange = { enabled ->
+                            miuixBlur = enabled
+                            DashboardPreferences.setMiuixBlur(this@MainActivity, enabled)
+                        },
+                    )
+                }
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = "预测性返回手势适配",
+                    subtitle = "使用 Android 官方预测性返回事件处理页面返回",
+                    checked = predictiveBack,
+                    onCheckedChange = { enabled ->
+                        predictiveBack = enabled
+                        DashboardPreferences.setPredictiveBack(this@MainActivity, enabled)
+                    },
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun StyleSelectionPreference() {
+        DropdownSelectionPreference(
+            title = "界面风格",
+            summary = if (uiStyle == UiStyle.MIUIX) "Miuix" else "Material",
+            items = listOf("Miuix", "Material"),
+            selectedIndex = if (uiStyle == UiStyle.MIUIX) 0 else 1,
+            onSelected = { index -> selectUiStyle(if (index == 0) UiStyle.MIUIX else UiStyle.MATERIAL) },
+        )
+    }
+
+    @Composable
+    private fun DropdownSelectionPreference(
+        title: String,
+        summary: String,
+        items: List<String>,
+        selectedIndex: Int,
+        onSelected: (Int) -> Unit,
+    ) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixOverlayDropdownPreference(
+                items = items,
+                selectedIndex = selectedIndex,
+                title = title,
+                summary = summary,
+                renderInRootScaffold = true,
+                onSelectedIndexChange = onSelected,
+            )
+            return
+        }
+        var expanded by remember { mutableStateOf(false) }
+        var menuOffset by remember { mutableStateOf(DpOffset.Zero) }
+        val density = LocalDensity.current
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .pointerInput(title, items) {
+                    detectTapGestures { position ->
+                        menuOffset = with(density) { DpOffset(position.x.toDp(), position.y.toDp()) }
+                        expanded = true
+                    }
+                }
+                .semantics {
+                    role = Role.Button
+                    onClick {
+                        expanded = true
+                        true
+                    }
+                },
+        ) {
+            SettingsActionRow(
+                icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
+                title = title,
+                subtitle = summary,
+                onClick = null,
+                showChevron = false,
+            )
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                offset = menuOffset,
+            ) {
+                items.forEachIndexed { index, item ->
+                    DropdownMenuItem(
+                        text = { Text(item) },
+                        onClick = {
+                            expanded = false
+                            onSelected(index)
+                        },
+                        leadingIcon = {
+                            if (index == selectedIndex) Icon(Icons.Filled.Check, contentDescription = null)
+                            else Spacer(Modifier.size(24.dp))
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun selectUiStyle(style: UiStyle) {
+        uiStyle = style
+        DashboardPreferences.setUiStyle(this, style)
+        showStylePicker = false
+    }
+
+    private fun themeModeLabel(mode: ThemeMode) = when (mode) {
+        ThemeMode.SYSTEM -> "跟随系统"
+        ThemeMode.LIGHT -> "浅色模式"
+        ThemeMode.DARK -> "深色模式"
+    }
+
+    private fun materialAccentLabel(accent: MaterialAccent) = when (accent) {
+        MaterialAccent.BLUE -> "蓝色"
+        MaterialAccent.PURPLE -> "紫色"
+        MaterialAccent.GREEN -> "绿色"
+        MaterialAccent.ORANGE -> "橙色"
+        MaterialAccent.RED -> "红色"
+    }
+
+    private fun materialPaletteLabel(style: MaterialPaletteStyle) = when (style) {
+        MaterialPaletteStyle.TONAL_SPOT -> "Tonal Spot"
+        MaterialPaletteStyle.VIBRANT -> "Vibrant"
+        MaterialPaletteStyle.EXPRESSIVE -> "Expressive"
+        MaterialPaletteStyle.NEUTRAL -> "Neutral"
+    }
+
+    @Composable
     private fun BalanceServiceEditorDialog() {
-        AlertDialog(
+        StyleAlertDialog(
+            title = if (editingBalanceServiceId == null) "添加服务" else "编辑服务",
+            summary = "配置服务连接和认证方式。凭据仅保存在本机加密存储中。",
             onDismissRequest = { if (!balanceEditorBusy) closeBalanceEditor() },
-            title = { Text(if (editingBalanceServiceId == null) "添加余额服务" else "编辑余额服务") },
-            text = {
+            body = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
+                    AppTextField(
                         value = balanceNameInput,
                         onValueChange = { balanceNameInput = it; balanceEditorError = "" },
-                        label = { Text("名称") },
-                        singleLine = true,
+                        label = "名称",
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    OutlinedTextField(
+                    AppTextField(
                         value = balanceEndpointInput,
                         onValueChange = { balanceEndpointInput = it; balanceEditorError = "" },
-                        label = { Text("Endpoint（API 根地址）") },
-                        placeholder = { Text("https://example.com/api/v1") },
-                        singleLine = true,
+                        label = "Endpoint（API 根地址）",
+                        placeholder = "https://example.com/api/v1",
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    when (balanceAuthMode) {
-                        BalanceAuthMode.SILICONFLOW_CONSOLE, BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> {
+                    when {
+                        balanceAuthMode.usesBrowserLogin() -> {
                             Text("登录方式：内置浏览器", style = MaterialTheme.typography.labelLarge)
                             Text(
-                                if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) {
-                                    "保存后会打开 SiliconFlow 控制台。请在页面内完成登录，应用会自动读取登录状态并返回。"
-                                } else {
-                                    "保存后会打开 MIMO 控制台。请在页面内完成登录，应用只读取余额接口所需的会话状态，不使用 Token Plan 专属 API Key。"
+                                when (platformBrand(balanceAuthMode)) {
+                                    PlatformBrand.SILICON_FLOW -> "保存后会打开 SiliconFlow 控制台。请在页面内完成登录，应用会自动读取登录状态并返回。"
+                                    PlatformBrand.XIAOMI_MIMO -> "保存后会打开 Xiaomi MIMO 控制台。应用只读取余额接口所需的会话状态，不使用 Token Plan 专属 API Key。"
+                                    else -> "保存后会打开平台官网控制台。应用只保存后台刷新所需的加密会话，不记录账号资料或网页内容。"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        BalanceAuthMode.EMAIL_PASSWORD -> {
+                        balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD -> {
                             Text("登录方式：邮箱密码", style = MaterialTheme.typography.labelLarge)
                         }
-                        BalanceAuthMode.API_KEY -> {
+                        balanceAuthMode == BalanceAuthMode.API_KEY -> {
                             Text("旧版 API Key 服务", style = MaterialTheme.typography.labelLarge)
                             Text(
                                 "此方式仅为兼容旧配置；新增 SiliconFlow 请使用控制台登录。",
@@ -977,100 +2670,75 @@ class MainActivity : ComponentActivity() {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        BalanceAuthMode.DEEPSEEK_API_KEY -> {
+                        balanceAuthMode == BalanceAuthMode.KIMI -> {
+                            Text("登录方式：Kimi 官方授权", style = MaterialTheme.typography.labelLarge)
+                            Text(
+                                "保存后会打开 Kimi 官方设备授权页；访问令牌和刷新令牌只会使用 Android Keystore 加密保存在本机。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        balanceAuthMode.usesApiToken() -> {
                             Text("登录方式：API Key", style = MaterialTheme.typography.labelLarge)
                             Text(
-                                "读取 DeepSeek 官方 API 余额；API Key 会使用 Android Keystore 加密保存。",
+                                "凭据只会使用 Android Keystore 加密保存，并通过平台官网接口读取余额或配额。",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                     if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) {
-                        OutlinedTextField(
+                        AppTextField(
                             value = balanceEmailInput,
                             onValueChange = { balanceEmailInput = it; balanceEditorError = "" },
-                            label = { Text("邮箱") },
-                            singleLine = true,
+                            label = "邮箱",
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                    if (balanceAuthMode != BalanceAuthMode.SILICONFLOW_CONSOLE && balanceAuthMode != BalanceAuthMode.MIMO_BALANCE && balanceAuthMode != BalanceAuthMode.MIMO_TOKEN_PLAN) {
-                        OutlinedTextField(
+                    if (!balanceAuthMode.usesBrowserLogin() && balanceAuthMode != BalanceAuthMode.KIMI) {
+                        AppTextField(
                             value = balancePasswordInput,
                             onValueChange = { balancePasswordInput = it; balanceEditorError = "" },
-                            label = { Text(if (balanceAuthMode == BalanceAuthMode.API_KEY || balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) "API Key" else "密码") },
-                            placeholder = {
-                                if (editingBalanceServiceId != null) {
-                                    Text(if (balanceAuthMode == BalanceAuthMode.API_KEY || balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) "已保存 API Key；可直接修改" else "已保存密码；可直接修改")
-                                }
-                            },
+                            label = if (balanceAuthMode.usesApiToken()) "API Key / 访问令牌" else "密码",
+                            placeholder = if (editingBalanceServiceId != null) {
+                                if (balanceAuthMode.usesApiToken()) "已加密保存；可直接修改" else "已保存密码；可直接修改"
+                            } else null,
                             visualTransformation = if (balancePasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                             trailingIcon = {
-                                IconButton(onClick = { balancePasswordVisible = !balancePasswordVisible }) {
-                                    Icon(
-                                        painterResource(if (balancePasswordVisible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
-                                        contentDescription = if (balancePasswordVisible) "隐藏凭据" else "显示凭据",
-                                    )
+                                if (uiStyle == UiStyle.MIUIX) {
+                                    MiuixIconButton(onClick = { balancePasswordVisible = !balancePasswordVisible }) {
+                                        Icon(
+                                            if (balancePasswordVisible) MiuixIcons.Regular.Hide else MiuixIcons.Regular.Show,
+                                            contentDescription = if (balancePasswordVisible) "隐藏凭据" else "显示凭据",
+                                        )
+                                    }
+                                } else {
+                                    IconButton(onClick = { balancePasswordVisible = !balancePasswordVisible }) {
+                                        Icon(
+                                            painterResource(if (balancePasswordVisible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
+                                            contentDescription = if (balancePasswordVisible) "隐藏凭据" else "显示凭据",
+                                        )
+                                    }
                                 }
                             },
-                            singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text("把代金券计入余额", style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    if (balanceIncludeVouchers) "会把可用代金券剩余额度一并累加" else "只显示控制台现金余额",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Switch(
-                                checked = balanceIncludeVouchers,
-                                onCheckedChange = { balanceIncludeVouchers = it; balanceEditorError = "" },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                    checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
-                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    uncheckedBorderColor = MaterialTheme.colorScheme.outline,
-                                ),
-                            )
-                        }
+                        EditorSwitchRow(
+                            title = "把代金券计入余额",
+                            subtitle = if (balanceIncludeVouchers) "会把可用代金券剩余额度一并累加" else "只显示控制台现金余额",
+                            checked = balanceIncludeVouchers,
+                            onCheckedChange = { balanceIncludeVouchers = it; balanceEditorError = "" },
+                        )
                     }
                     if (balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text("把赠送余额计入显示", style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    if (balanceIncludeGranted) "显示总余额（包含赠送余额）" else "只显示充值余额",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Switch(
-                                checked = balanceIncludeGranted,
-                                onCheckedChange = { balanceIncludeGranted = it; balanceEditorError = "" },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                    checkedBorderColor = MaterialTheme.colorScheme.primary,
-                                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
-                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    uncheckedBorderColor = MaterialTheme.colorScheme.outline,
-                                ),
-                            )
-                        }
+                        EditorSwitchRow(
+                            title = "把赠送余额计入显示",
+                            subtitle = if (balanceIncludeGranted) "显示总余额（包含赠送余额）" else "只显示充值余额",
+                            checked = balanceIncludeGranted,
+                            onCheckedChange = { balanceIncludeGranted = it; balanceEditorError = "" },
+                        )
                     }
                     if (balanceEditorError.isNotBlank()) {
                         Text(
@@ -1084,9 +2752,18 @@ class MainActivity : ComponentActivity() {
                             BalanceAuthMode.API_KEY -> "API Key 模式读取 API 余额 data.totalBalance。Endpoint 建议填写完整的 https://api.siliconflow.cn/v1；API Key 会使用 Android Keystore 加密保存。"
                             BalanceAuthMode.DEEPSEEK_API_KEY -> "DeepSeek 使用 GET /user/balance。Endpoint 建议填写 https://api.deepseek.com；API Key 会使用 Android Keystore 加密保存。"
                             BalanceAuthMode.SILICONFLOW_CONSOLE -> "控制台模式由内置浏览器完成登录，自动读取 /walletd-server 的网页余额；打开上面的开关后，还会读取 stage=3 代金券并按剩余额度累加。"
-                            BalanceAuthMode.MIMO_BALANCE -> "MIMO 按量模式读取 /api/v1/balance，按人民币显示现金余额，并在详情中保留赠送余额。余额存在约 5 分钟延迟。"
-                            BalanceAuthMode.MIMO_TOKEN_PLAN -> "MIMO Token Plan 读取 /api/v1/tokenPlan/detail 与 /api/v1/tokenPlan/usage，主值显示剩余百分比，详情显示 Credits 和有效期。"
-                            BalanceAuthMode.EMAIL_PASSWORD -> "兼容标准接口的 Endpoint 建议填写完整的 https://…/api/v1。应用会自动请求 /auth/login、/auth/refresh 和 /user/profile。邮箱和密码会使用 Android Keystore 加密保存。"
+                            BalanceAuthMode.MIMO_BALANCE -> "Xiaomi MIMO 按量模式读取 /api/v1/balance，按人民币显示现金余额，并在详情中保留赠送余额。余额存在约 5 分钟延迟。"
+                            BalanceAuthMode.MIMO_TOKEN_PLAN -> "Xiaomi MIMO Token Plan 读取 /api/v1/tokenPlan/detail 与 /api/v1/tokenPlan/usage，主值显示剩余百分比，详情显示 Credits 和有效期。"
+                            BalanceAuthMode.VOLCENGINE_BALANCE -> "通过火山引擎控制台会话读取账户可用余额。"
+                            BalanceAuthMode.VOLCENGINE_CODING_PLAN -> "读取火山引擎 Coding Plan 的会话、周和月用量窗口。"
+                            BalanceAuthMode.VOLCENGINE_AGENT_PLAN -> "读取火山引擎 Agent Plan 的 5 小时、周和月用量窗口。"
+                            BalanceAuthMode.OPENCODE_ZEN -> "通过 OpenCode 控制台会话读取 Zen 当前账户余额。"
+                            BalanceAuthMode.OPENCODE_GO -> "使用 OpenCode API Key 读取 /zen/go/v1/usage 的 5 小时、周和月配额。"
+                            BalanceAuthMode.KIMI -> "通过 Kimi 官方设备授权登录，读取 /usages 的 5 小时与周配额，并自动刷新访问令牌。"
+                            BalanceAuthMode.KIMI_BALANCE -> "Kimi 使用 GET /v1/users/me/balance 读取账户余额；API Key 会使用 Android Keystore 加密保存。"
+                            BalanceAuthMode.GLM_BALANCE -> "通过智谱开放平台控制台会话读取账户余额。"
+                            BalanceAuthMode.GLM_CODING_PLAN -> "读取 GLM Coding Plan 的 5 小时与周配额。"
+                            BalanceAuthMode.EMAIL_PASSWORD -> "自定义接口的 Endpoint 建议填写完整的 https://…/api/v1。应用会自动请求 /auth/login、/auth/refresh 和 /user/profile。邮箱和密码会使用 Android Keystore 加密保存。"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1094,9 +2771,10 @@ class MainActivity : ComponentActivity() {
                 }
             },
             confirmButton = {
-                Button(
+                AppButton(
                     onClick = ::saveBalanceService,
                     enabled = !balanceEditorBusy && balanceNameInput.isNotBlank() && balanceEndpointInput.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
                         when {
@@ -1104,29 +2782,31 @@ class MainActivity : ComponentActivity() {
                             balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE || balanceAuthMode == BalanceAuthMode.MIMO_BALANCE || balanceAuthMode == BalanceAuthMode.MIMO_TOKEN_PLAN -> "保存并登录"
                             else -> "保存"
                         },
+                        color = Color.White,
                     )
                 }
             },
-            dismissButton = { TextButton(onClick = ::closeBalanceEditor, enabled = !balanceEditorBusy) { Text("取消") } },
+            dismissButton = { AppTextButton(text = "取消", onClick = ::closeBalanceEditor, enabled = !balanceEditorBusy, modifier = Modifier.fillMaxWidth()) },
         )
     }
 
     @Composable
     private fun DeleteBalanceServiceDialog() {
         val service = balanceServices.firstOrNull { it.id == deletingBalanceServiceId }
-        AlertDialog(
+        StyleAlertDialog(
+            title = "删除服务？",
+            summary = "将删除 ${service?.name ?: "这个服务"} 的配置、缓存和本机凭证。",
             onDismissRequest = { deletingBalanceServiceId = null },
-            title = { Text("删除余额服务？") },
-            text = { Text("将删除 ${service?.name ?: "这个服务"} 的配置、缓存和本机凭证。") },
+            body = {},
             confirmButton = {
-                TextButton(onClick = {
+                AppDangerButton(text = "删除", modifier = Modifier.fillMaxWidth(), onClick = {
                     deletingBalanceServiceId?.let { StandardBalanceRepository.delete(this@MainActivity, it) }
                     deletingBalanceServiceId = null
                     loadBalanceServices()
-                    message = "余额服务已删除"
-                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                    message = "服务已删除"
+                })
             },
-            dismissButton = { TextButton(onClick = { deletingBalanceServiceId = null }) { Text("取消") } },
+            dismissButton = { AppTextButton(text = "取消", onClick = { deletingBalanceServiceId = null }, modifier = Modifier.fillMaxWidth()) },
         )
     }
 
@@ -1134,62 +2814,134 @@ class MainActivity : ComponentActivity() {
     private fun SettingsSection(title: String, content: @Composable () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            ) { Column { content() } }
+            if (uiStyle == UiStyle.MIUIX) {
+                AppCard { content() }
+            } else {
+                Column(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large)) { content() }
+            }
         }
     }
 
     @Composable
     private fun SettingsSwitchRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AppSwitchRow(title, subtitle, checked, onCheckedChange)
+    }
+
+    @Composable
+    private fun EditorSwitchRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixCard {
+                MiuixSwitchPreference(
+                    title = title,
+                    summary = subtitle,
+                    checked = checked,
+                    onCheckedChange = onCheckedChange,
+                )
             }
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    checkedBorderColor = MaterialTheme.colorScheme.primary,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    uncheckedBorderColor = MaterialTheme.colorScheme.outline,
-                ),
-            )
+            return
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onCheckedChange(!checked) }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = checked, onCheckedChange = onCheckedChange)
+            }
         }
     }
 
     @Composable
     private fun SettingsActionRow(
-        icon: @Composable () -> Unit,
+        icon: (@Composable () -> Unit)?,
         title: String,
         subtitle: String,
         onClick: (() -> Unit)?,
         showChevron: Boolean = true,
+        keepLeadingInMiuix: Boolean = false,
     ) {
-        val rowContent: @Composable () -> Unit = {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(34.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) { icon() }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium)
-                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (showChevron) Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixArrowPreference(
+                title = title,
+                summary = subtitle,
+                onClick = onClick ?: {},
+                enabled = onClick != null,
+                startAction = if (keepLeadingInMiuix) icon else null,
+            )
+            return
         }
-        if (onClick != null) Surface(onClick = onClick, color = Color.Transparent) { rowContent() }
-        else Surface(color = Color.Transparent) { rowContent() }
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            shape = MaterialTheme.shapes.extraSmall,
+            color = materialCardColor(),
+        ) {
+            ListItem(
+                colors = androidx.compose.material3.ListItemDefaults.colors(
+                    containerColor = Color.Transparent,
+                ),
+                leadingContent = icon ?: {
+                    Icon(
+                        painterResource(defaultListIcon(title)),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                supportingContent = { Text(subtitle) },
+                trailingContent = if (showChevron) {
+                    { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null) }
+                } else null,
+            ) { Text(title) }
+        }
+    }
+
+    private fun defaultListIcon(title: String): Int = when {
+        title.contains("小组件") -> R.drawable.ic_widget
+        title.contains("通知") -> R.drawable.ic_notifications
+        title.contains("电池") || title.contains("后台") -> R.drawable.ic_battery
+        title.contains("隐私") || title.contains("健康") || title.contains("预测") -> R.drawable.ic_shield
+        title.contains("刷新") || title.contains("授权") -> R.drawable.ic_refresh
+        else -> R.drawable.ic_settings
     }
 
     @Composable
     private fun SettingsDivider() {
-        HorizontalDivider(Modifier.padding(start = 62.dp), color = MaterialTheme.colorScheme.outline)
+        if (uiStyle == UiStyle.MATERIAL) Spacer(Modifier.height(3.dp))
+    }
+
+    @Composable
+    private fun PlatformLogo(
+        brand: PlatformBrand,
+        size: androidx.compose.ui.unit.Dp,
+        modifier: Modifier = Modifier,
+    ) {
+        val bitmap = remember(brand) { PlatformLogoBitmaps.get(brand) }
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = modifier.size(size).clip(RoundedCornerShape(size * 0.22f)),
+            )
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.ic_custom_endpoint),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = modifier.size(size),
+            )
+        }
     }
 
     @Composable
@@ -1212,47 +2964,51 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun InlineNotice(text: String, modifier: Modifier = Modifier) {
-        Surface(modifier, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
+        AppSurface(modifier, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
             Text(text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp))
         }
     }
 
     @Composable
     private fun NotificationEducationDialog() {
-        AlertDialog(
+        StyleAlertDialog(
+            title = "保持背屏配额为最新",
+            summary = "持续同步会显示一条低优先级常驻通知，让 Android 保持服务运行。它不会用于营销，并可随时在设置中关闭。",
             onDismissRequest = { showNotificationEducation = false },
-            icon = { Icon(painterResource(R.drawable.ic_notifications), contentDescription = null) },
-            title = { Text("保持背屏配额为最新") },
-            text = { Text("持续同步会显示一条低优先级常驻通知，让 Android 保持服务运行。它不会用于营销，并可随时在设置中关闭。") },
+            body = {},
             confirmButton = {
-                Button(onClick = {
+                AppButton(onClick = {
                     showNotificationEducation = false
                     if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                     else QuotaForegroundService.start(this@MainActivity)
-                }) { Text("继续") }
+                }, modifier = Modifier.fillMaxWidth()) { Text("继续") }
             },
-            dismissButton = { TextButton(onClick = { showNotificationEducation = false }) { Text("暂不") } },
+            dismissButton = { AppTextButton(text = "暂不", onClick = { showNotificationEducation = false }, modifier = Modifier.fillMaxWidth()) },
         )
     }
 
     @Composable
     private fun SignOutDialog() {
-        AlertDialog(
+        StyleAlertDialog(
+            title = "退出 OpenAI 登录？",
+            summary = "这会删除本机加密保存的 OpenAI OAuth 凭证。已配置的服务不会受影响。",
             onDismissRequest = { showSignOutConfirm = false },
-            title = { Text("退出 OpenAI 登录？") },
-            text = { Text("这会删除本机加密保存的 OpenAI OAuth 凭证。已配置的标准余额服务不会受影响。") },
+            body = {},
             confirmButton = {
-                TextButton(onClick = {
+                AppDangerButton(text = "退出登录", modifier = Modifier.fillMaxWidth(), onClick = {
                     QuotaRepository.clear(this@MainActivity)
                     state = QuotaState()
                     backgroundEnabled = true
                     notificationSyncEnabled = true
-                    showSettings = false
                     message = "已退出登录"
                     showSignOutConfirm = false
-                }) { Text("退出登录", color = MaterialTheme.colorScheme.error) }
+                    if (activityPage != ActivityPage.ROOT) {
+                        setResult(RESULT_OK)
+                        finish()
+                    }
+                })
             },
-            dismissButton = { TextButton(onClick = { showSignOutConfirm = false }) { Text("取消") } },
+            dismissButton = { AppTextButton(text = "取消", onClick = { showSignOutConfirm = false }, modifier = Modifier.fillMaxWidth()) },
         )
     }
 
@@ -1268,6 +3024,21 @@ class MainActivity : ComponentActivity() {
     private fun displayBalance(service: BalanceService): String {
         return balanceDisplayValue(service)
     }
+
+    private fun tokenPlanDetail(service: BalanceService): String {
+        if (service.displayKind != BalanceDisplayKind.TOKEN_PLAN) return service.detail
+        val total = service.total.toBigDecimalOrNull() ?: return service.detail
+        val remaining = service.balance.toBigDecimalOrNull() ?: return service.detail
+        val used = service.used.toBigDecimalOrNull() ?: total.subtract(remaining)
+        val value = if (service.tokenPlanDisplay == TokenPlanDisplay.REMAINING) remaining else used
+        val label = if (service.tokenPlanDisplay == TokenPlanDisplay.REMAINING) "剩余" else "已用"
+        val plan = service.detail.substringBefore(" · ").ifBlank { "Token Plan" }
+        return "$plan · $label ${formatPlanCredits(value)} / ${formatPlanCredits(total)} Credits"
+    }
+
+    private fun formatPlanCredits(value: java.math.BigDecimal): String = runCatching {
+        java.text.DecimalFormat("#,###").format(value.setScale(0, java.math.RoundingMode.DOWN).toBigInteger())
+    }.getOrDefault(value.stripTrailingZeros().toPlainString())
 
     private fun prepareLiveSync(forceEducation: Boolean = false) {
         val hasAnyAuthenticatedService = QuotaRepository.signedIn(this) || StandardBalanceRepository.hasAuthenticatedService(this)
@@ -1295,29 +3066,134 @@ class MainActivity : ComponentActivity() {
         startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
     }
 
-    private fun requestPinQuotaWidget() {
-        val manager = AppWidgetManager.getInstance(this)
-        if (!manager.isRequestPinAppWidgetSupported) {
-            widgetInstallMessage = "当前 Launcher 不支持应用内固定。请长按桌面空白处，打开“小组件”，再选择 OuterView Quota。"
-            return
+    private fun openActivityPage(page: ActivityPage, brand: String? = null) {
+        val targetActivity = when (page) {
+            ActivityPage.ROOT -> MainActivity::class.java
+            ActivityPage.SETTINGS -> SettingsActivity::class.java
+            ActivityPage.WIDGET_SETTINGS -> WidgetSettingsActivity::class.java
+            ActivityPage.WIDGET_UI_SETTINGS -> WidgetUiSettingsActivity::class.java
+            ActivityPage.THEME_SETTINGS -> ThemeSettingsActivity::class.java
+            ActivityPage.CONFIGURATION -> ServiceConfigurationActivity::class.java
         }
-        val callback = PendingIntent.getBroadcast(
-            this,
-            2,
-            Intent(this, QuotaAppWidgetProvider::class.java).setAction(QuotaAppWidgetProvider.ACTION_PINNED),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        widgetInstallMessage = if (
-            manager.requestPinAppWidget(ComponentName(this, QuotaAppWidgetProvider::class.java), null, callback)
-        ) {
-            "已向 Launcher 发送添加请求，请在桌面确认。"
-        } else {
-            "Launcher 未接受添加请求。请长按桌面，从小组件列表手动添加。"
-        }
+        val pageIntent = Intent(this, targetActivity)
+            .putExtra(EXTRA_ACTIVITY_PAGE, page.value)
+        if (brand != null) pageIntent.putExtra(EXTRA_ACTIVITY_BRAND, brand)
+        secondaryPageLauncher.launch(pageIntent)
     }
 
     private fun loadBalanceServices() {
         balanceServices = StandardBalanceRepository.list(this)
+    }
+
+    private fun loadPageState() {
+        loadVisualState()
+        applyPageData(readPageData(activityPage))
+        pageContentReady = true
+    }
+
+    private fun loadPageStateAsync() {
+        val page = activityPage
+        Thread {
+            val snapshot = readPageData(page)
+            runOnUiThread {
+                if (activityPage == page && !isFinishing && !isDestroyed) {
+                    applyPageData(snapshot)
+                    pageContentReady = true
+                }
+            }
+        }.start()
+    }
+
+    private fun loadVisualState() {
+        WidgetHeightPreferences.sanitizeCustomInputs(this)
+        uiStyle = DashboardPreferences.uiStyle(this)
+        materialDynamicColor = DashboardPreferences.materialDynamicColor(this)
+        widgetPrimaryId = WidgetSelectionPreferences.globalPrimary(this)
+        widgetSecondaryId = WidgetSelectionPreferences.globalSecondary(this)
+        widgetShowSecondary = WidgetSelectionPreferences.showSecondary(this)
+        widgetHeightInput = WidgetHeightPreferences.customInput(this)
+        widgetRecommendedHeight = WidgetHeightPreferences.recommendedHeightDp(this)
+        widgetCornerRadiusInput = WidgetHeightPreferences.customCornerRadiusInput(this)
+        loadThemePreferences()
+    }
+
+    private fun widgetServiceOptions(): List<Pair<String, String>> = buildList {
+        add(WidgetSelectionPreferences.CODEX_ID to "OpenAI Codex")
+        balanceServices
+            .filter { it.visible }
+            .forEach { add(it.id to it.name) }
+    }.distinctBy { it.first }
+
+    private fun saveWidgetPreferences() {
+        WidgetSelectionPreferences.setGlobal(
+            this,
+            widgetPrimaryId,
+            widgetSecondaryId,
+            widgetShowSecondary,
+        )
+        QuotaAppWidgetProvider.updateAll(this)
+    }
+
+    private fun readPageData(page: ActivityPage): PageDataSnapshot = when (page) {
+        ActivityPage.ROOT -> PageDataSnapshot(
+            quotaState = QuotaRepository.current(this),
+            services = StandardBalanceRepository.list(this),
+            showCodexQuota = DashboardPreferences.showCodex(this),
+            showHealthStatus = DashboardPreferences.showHealth(this),
+            showProviderIcons = DashboardPreferences.showProviderIcons(this),
+            backgroundEnabled = QuotaRepository.backgroundEnabled(this),
+            notificationSyncEnabled = QuotaRepository.notificationSyncEnabled(this),
+            serviceRunning = QuotaForegroundService.running,
+        )
+        ActivityPage.SETTINGS -> PageDataSnapshot(
+            services = StandardBalanceRepository.list(this),
+            showHealthStatus = DashboardPreferences.showHealth(this),
+            showProviderIcons = DashboardPreferences.showProviderIcons(this),
+            backgroundEnabled = QuotaRepository.backgroundEnabled(this),
+            notificationSyncEnabled = QuotaRepository.notificationSyncEnabled(this),
+            serviceRunning = QuotaForegroundService.running,
+        )
+        ActivityPage.WIDGET_SETTINGS, ActivityPage.WIDGET_UI_SETTINGS -> PageDataSnapshot(
+            services = StandardBalanceRepository.list(this),
+        )
+        ActivityPage.CONFIGURATION -> PageDataSnapshot(
+            quotaState = QuotaRepository.current(this),
+            services = StandardBalanceRepository.list(this),
+            showCodexQuota = DashboardPreferences.showCodex(this),
+        )
+        ActivityPage.THEME_SETTINGS -> PageDataSnapshot()
+    }
+
+    private fun applyPageData(snapshot: PageDataSnapshot) {
+        snapshot.quotaState?.let { state = it }
+        snapshot.services?.let { balanceServices = it }
+        snapshot.showCodexQuota?.let { showCodexQuota = it }
+        snapshot.showHealthStatus?.let { showHealthStatus = it }
+        snapshot.showProviderIcons?.let { showProviderIcons = it }
+        snapshot.backgroundEnabled?.let { backgroundEnabled = it }
+        snapshot.notificationSyncEnabled?.let { notificationSyncEnabled = it }
+        snapshot.serviceRunning?.let { serviceRunning = it }
+    }
+
+    private fun loadThemePreferences() {
+        themeMode = DashboardPreferences.themeMode(this)
+        materialAccent = DashboardPreferences.materialAccent(this)
+        materialPaletteStyle = DashboardPreferences.materialPaletteStyle(this)
+        miuixBlur = DashboardPreferences.miuixBlur(this)
+        predictiveBack = DashboardPreferences.predictiveBack(this)
+    }
+
+    private fun navigateBack() {
+        when {
+            showStylePicker -> showStylePicker = false
+            showAddServices -> { showAddServices = false; addBrand = null }
+            editingDisplaySurfacesServiceId != null -> editingDisplaySurfacesServiceId = null
+            showBalanceEditor && !balanceEditorBusy -> closeBalanceEditor()
+            showBalanceEditor -> Unit
+            deletingBalanceServiceId != null -> deletingBalanceServiceId = null
+            showSignOutConfirm -> showSignOutConfirm = false
+            showNotificationEducation -> showNotificationEducation = false
+        }
     }
 
     private fun openBalanceEditor(id: String?, defaultAuthMode: BalanceAuthMode? = null) {
@@ -1327,10 +3203,19 @@ class MainActivity : ComponentActivity() {
         balanceAuthMode = defaultAuthMode ?: service?.authMode ?: BalanceAuthMode.EMAIL_PASSWORD
         balanceNameInput = service?.name ?: when (balanceAuthMode) {
             BalanceAuthMode.API_KEY -> "SiliconFlow API"
-            BalanceAuthMode.DEEPSEEK_API_KEY -> "DeepSeek"
-            BalanceAuthMode.SILICONFLOW_CONSOLE -> "SiliconFlow 控制台"
-            BalanceAuthMode.MIMO_BALANCE -> "MIMO 按量余额"
-            BalanceAuthMode.MIMO_TOKEN_PLAN -> "MIMO Token Plan"
+            BalanceAuthMode.DEEPSEEK_API_KEY -> "账户余额"
+            BalanceAuthMode.SILICONFLOW_CONSOLE -> "账户余额"
+            BalanceAuthMode.MIMO_BALANCE -> "账户余额"
+            BalanceAuthMode.MIMO_TOKEN_PLAN -> "Token Plan"
+            BalanceAuthMode.VOLCENGINE_BALANCE -> "账户余额"
+            BalanceAuthMode.VOLCENGINE_CODING_PLAN -> "Coding Plan"
+            BalanceAuthMode.VOLCENGINE_AGENT_PLAN -> "Agent Plan"
+            BalanceAuthMode.OPENCODE_ZEN -> "Zen 账户余额"
+            BalanceAuthMode.OPENCODE_GO -> "Go 配额"
+            BalanceAuthMode.KIMI -> "Coding Plan"
+            BalanceAuthMode.KIMI_BALANCE -> "账户余额"
+            BalanceAuthMode.GLM_BALANCE -> "账户余额"
+            BalanceAuthMode.GLM_CODING_PLAN -> "Coding Plan"
             BalanceAuthMode.EMAIL_PASSWORD -> ""
         }
         balanceEndpointInput = service?.endpoint ?: when (balanceAuthMode) {
@@ -1338,6 +3223,12 @@ class MainActivity : ComponentActivity() {
             BalanceAuthMode.DEEPSEEK_API_KEY -> "https://api.deepseek.com"
             BalanceAuthMode.SILICONFLOW_CONSOLE -> "https://cloud.siliconflow.cn"
             BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> "https://platform.xiaomimimo.com"
+            BalanceAuthMode.VOLCENGINE_BALANCE -> "https://console.volcengine.com"
+            BalanceAuthMode.VOLCENGINE_CODING_PLAN, BalanceAuthMode.VOLCENGINE_AGENT_PLAN -> "https://ark.cn-beijing.volces.com"
+            BalanceAuthMode.OPENCODE_ZEN, BalanceAuthMode.OPENCODE_GO -> "https://opencode.ai"
+            BalanceAuthMode.KIMI -> "https://api.kimi.com/coding/v1"
+            BalanceAuthMode.KIMI_BALANCE -> "https://api.moonshot.cn/v1"
+            BalanceAuthMode.GLM_BALANCE, BalanceAuthMode.GLM_CODING_PLAN -> "https://www.bigmodel.cn"
             BalanceAuthMode.EMAIL_PASSWORD -> ""
         }
         balanceEmailInput = if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) {
@@ -1345,7 +3236,7 @@ class MainActivity : ComponentActivity() {
         } else {
             ""
         }
-        balancePasswordInput = if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE || balanceAuthMode == BalanceAuthMode.MIMO_BALANCE || balanceAuthMode == BalanceAuthMode.MIMO_TOKEN_PLAN) "" else credentials?.secret.orEmpty()
+        balancePasswordInput = if (balanceAuthMode.usesBrowserLogin() || balanceAuthMode == BalanceAuthMode.KIMI) "" else credentials?.secret.orEmpty()
         balancePasswordVisible = false
         balanceIncludeVouchers = if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) service?.includeVouchers == true else false
         balanceIncludeGranted = if (balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) service?.includeGrantedBalance != false else true
@@ -1386,12 +3277,23 @@ class MainActivity : ComponentActivity() {
             balanceEditorError = "请输入邮箱"
             return
         }
-        val browserAuth = selectedAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE || selectedAuthMode == BalanceAuthMode.MIMO_BALANCE || selectedAuthMode == BalanceAuthMode.MIMO_TOKEN_PLAN
-        if (!browserAuth && secret.isBlank() && needsLogin) {
+        val browserAuth = selectedAuthMode.usesBrowserLogin()
+        if (!browserAuth && selectedAuthMode != BalanceAuthMode.KIMI && secret.isBlank() && needsLogin) {
             balanceEditorError = when (selectedAuthMode) {
                 BalanceAuthMode.API_KEY -> "请输入 API Key"
                 BalanceAuthMode.DEEPSEEK_API_KEY -> "请输入 DeepSeek API Key"
-                BalanceAuthMode.SILICONFLOW_CONSOLE, BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> "请先完成浏览器登录"
+                BalanceAuthMode.OPENCODE_GO -> "请输入 OpenCode API Key"
+                BalanceAuthMode.KIMI -> "请完成 Kimi 官方授权"
+                BalanceAuthMode.KIMI_BALANCE -> "请输入 Kimi API Key"
+                BalanceAuthMode.SILICONFLOW_CONSOLE,
+                BalanceAuthMode.MIMO_BALANCE,
+                BalanceAuthMode.MIMO_TOKEN_PLAN,
+                BalanceAuthMode.VOLCENGINE_BALANCE,
+                BalanceAuthMode.VOLCENGINE_CODING_PLAN,
+                BalanceAuthMode.VOLCENGINE_AGENT_PLAN,
+                BalanceAuthMode.OPENCODE_ZEN,
+                BalanceAuthMode.GLM_BALANCE,
+                BalanceAuthMode.GLM_CODING_PLAN -> "请先完成浏览器登录"
                 BalanceAuthMode.EMAIL_PASSWORD -> "请输入密码"
             }
             return
@@ -1403,18 +3305,34 @@ class MainActivity : ComponentActivity() {
             return
         }
         loadBalanceServices()
+        if (selectedAuthMode == BalanceAuthMode.KIMI && needsLogin) {
+            closeBalanceEditor()
+            startKimiLogin(serviceId)
+            return
+        }
         if (browserAuth) {
             closeBalanceEditor()
             when (selectedAuthMode) {
                 BalanceAuthMode.SILICONFLOW_CONSOLE -> startSiliconFlowLogin(serviceId)
                 BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> startMimoLogin(serviceId)
-                BalanceAuthMode.EMAIL_PASSWORD, BalanceAuthMode.API_KEY, BalanceAuthMode.DEEPSEEK_API_KEY -> error("非浏览器认证模式不能启动内置登录页")
+                BalanceAuthMode.VOLCENGINE_BALANCE,
+                BalanceAuthMode.VOLCENGINE_CODING_PLAN,
+                BalanceAuthMode.VOLCENGINE_AGENT_PLAN,
+                BalanceAuthMode.OPENCODE_ZEN,
+                BalanceAuthMode.GLM_BALANCE,
+                BalanceAuthMode.GLM_CODING_PLAN -> startGenericConsoleLogin(serviceId, selectedAuthMode)
+                BalanceAuthMode.EMAIL_PASSWORD,
+                BalanceAuthMode.API_KEY,
+                BalanceAuthMode.DEEPSEEK_API_KEY,
+                BalanceAuthMode.OPENCODE_GO,
+                BalanceAuthMode.KIMI,
+                BalanceAuthMode.KIMI_BALANCE -> error("非浏览器认证模式不能启动内置登录页")
             }
             return
         }
         if ((selectedAuthMode == BalanceAuthMode.EMAIL_PASSWORD && account.isBlank()) || secret.isBlank()) {
             closeBalanceEditor()
-            message = "余额服务配置已保存"
+            message = "服务配置已保存"
             return
         }
         balanceEditorBusy = true
@@ -1452,96 +3370,30 @@ class MainActivity : ComponentActivity() {
 
     private fun startMimoLogin(serviceId: String) {
         pendingMimoLoginServiceId = serviceId
-        message = "正在打开 MIMO 内置登录页…"
+        message = "正在打开 Xiaomi MIMO 内置登录页…"
         mimoLoginLauncher.launch(Intent(this, MimoLoginActivity::class.java))
     }
 
-    private fun refreshBalanceService(id: String) {
-        if (balanceRefreshingId != null) return
-        balanceRefreshingId = id
-        Thread {
-            val result = runCatching { StandardBalanceRepository.refresh(this, id, force = true) }
-            runOnUiThread {
-                balanceRefreshingId = null
-                loadBalanceServices()
-                result.onSuccess {
-                    message = when (it.health) {
-                        BalanceHealth.FRESH -> "${it.name} 已更新"
-                        BalanceHealth.CACHED -> "${it.name} 暂时无法更新，显示缓存"
-                        BalanceHealth.AUTH_REQUIRED -> "${it.name} 需要重新登录"
-                        else -> "${it.name} 更新失败"
-                    }
-                }.onFailure { message = "更新失败：${it.message ?: "未知错误"}" }
-            }
-        }.start()
+    private fun startCodexLogin() {
+        message = "正在打开 OpenAI Codex 内置登录页…"
+        secondaryPageLauncher.launch(Intent(this, CodexLoginActivity::class.java))
     }
 
-    private fun beginOAuth() {
-        if (pendingSession != null) return
-        message = "正在准备 OpenAI 授权…"
-        val session = CodexOAuth.createSession()
-        pendingSession = session
-        CodexOAuth.listen(session, onReady = { runOnUiThread { if (pendingSession == session) startActivity(Intent(Intent.ACTION_VIEW, session.url.toUri())) } }) { result ->
-            runOnUiThread {
-                if (pendingSession != session) return@runOnUiThread
-                pendingSession = null
-                handleAuthResult(result)
-            }
-        }
+    private fun startGenericConsoleLogin(serviceId: String, authMode: BalanceAuthMode) {
+        pendingConsoleLogin = serviceId to authMode
+        message = "正在打开平台官网登录页…"
+        consoleLoginLauncher.launch(
+            Intent(this, ConsoleLoginActivity::class.java)
+                .putExtra(ConsoleLoginActivity.EXTRA_AUTH_MODE, authMode.name),
+        )
     }
 
-    private fun cancelOAuth() {
-        pendingSession = null
-        CodexOAuth.cancel()
-        message = "已取消授权"
-    }
-
-    private fun submitPasted() {
-        val raw = pastedValue.trim()
-        pastedValue = ""
-        val session = pendingSession ?: run { message = "请先开始授权，再粘贴回调地址或授权码。"; return }
-        val code = if (raw.startsWith("http://") || raw.startsWith("https://")) raw.toUri().getQueryParameter("code") else null
-        when {
-            code != null -> submitCode(code, session)
-            raw.startsWith("eyJ") -> {
-                CodexOAuth.cancel()
-                pendingSession = null
-                val saveError = runCatching { QuotaRepository.saveAccessToken(this, raw) }.exceptionOrNull()
-                if (saveError != null) {
-                    message = "无法安全保存凭证：${saveError.message ?: "未知错误"}"
-                } else {
-                    runCatching { prepareLiveSync() }
-                        .onFailure { message = "已连接；后台同步稍后重试：${it.message ?: "未知错误"}" }
-                    refresh()
-                }
-            }
-            else -> submitCode(raw, session)
-        }
-    }
-
-    private fun submitCode(code: String, session: AuthSession) {
-        CodexOAuth.cancel()
-        message = "正在交换授权码…"
-        CodexOAuth.exchangeToken(code, session.verifier) { result -> runOnUiThread { pendingSession = null; handleAuthResult(result) } }
-    }
-
-    private fun handleAuthResult(result: Result<OAuthTokens>) {
-        val tokens = result.getOrElse {
-            message = "授权失败：${it.message ?: "未知错误"}"
-            return
-        }
-        val saveError = runCatching { QuotaRepository.saveTokens(this, tokens) }.exceptionOrNull()
-        if (saveError != null) {
-            message = "授权已返回，但无法安全保存凭证：${saveError.message ?: "未知错误"}"
-            return
-        }
-        backgroundEnabled = QuotaRepository.backgroundEnabled(this)
-        notificationSyncEnabled = QuotaRepository.notificationSyncEnabled(this)
-        showSettings = false
-        message = "授权成功，正在更新…"
-        runCatching { prepareLiveSync() }
-            .onFailure { message = "授权成功；后台同步稍后重试：${it.message ?: "未知错误"}" }
-        refresh()
+    private fun startKimiLogin(serviceId: String) {
+        message = "正在打开 Kimi 官方授权页…"
+        kimiLoginLauncher.launch(
+            Intent(this, KimiLoginActivity::class.java)
+                .putExtra(KimiLoginActivity.EXTRA_SERVICE_ID, serviceId),
+        )
     }
 
     private fun refresh() {
@@ -1575,4 +3427,23 @@ class MainActivity : ComponentActivity() {
             }
         }.start()
     }
+
+    private companion object {
+        @Volatile
+        var taskWasActiveInThisProcess = false
+    }
 }
+
+/**
+ * 各页面使用独立的 Activity 组件，让 WindowManager 采用设备 ROM 的默认窗口转场。
+ * 不在应用内指定 enter/exit 动画，也不传入自定义 ActivityOptions。
+ */
+class SettingsActivity : MainActivity()
+
+class WidgetSettingsActivity : MainActivity()
+
+class WidgetUiSettingsActivity : MainActivity()
+
+class ThemeSettingsActivity : MainActivity()
+
+class ServiceConfigurationActivity : MainActivity()

@@ -11,3 +11,4 @@ captures/
 *.keystore
 *.idsig
 .env
+/AGENTS.md

@@ -81,8 +81,40 @@ class QuotaAppWidgetPresenterTest {
     }
 
     @Test
+    fun selectedSecondServiceTakesWideSecondaryInsteadOfCodexSecondWindow() {
+        val state = QuotaState(fiveHourRemaining = 82, weeklyRemaining = 64, health = QuotaHealth.FRESH)
+        val balance = BalanceService(id = "ds", name = "DeepSeek", endpoint = "https://example.test", balance = "1.20", currency = "USD")
+
+        val presentation = QuotaWidgetPresenter.present(state, listOf(balance), compact = false, showCodex = true)
+
+        assertEquals(WidgetWindow.WEEKLY, presentation.primaryWindow)
+        assertFalse(presentation.showFiveHourSecondary)
+        assertEquals("DeepSeek", presentation.secondaryBalance?.name)
+        assertTrue(presentation.showSecondary)
+    }
+
+    @Test
     fun widthPolicySelectsCompactAndMediumAtDocumentedBoundary() {
         assertTrue(QuotaWidgetPresenter.isCompact(279))
         assertFalse(QuotaWidgetPresenter.isCompact(280))
+    }
+
+    @Test
+    fun widgetExposureRefreshGateRequiresFiveMinutesBetweenRefreshes() {
+        val firstRefresh = 1_000L
+
+        assertTrue(WidgetExposureRefreshGate.canRefresh(0L, firstRefresh))
+        assertFalse(
+            WidgetExposureRefreshGate.canRefresh(
+                firstRefresh,
+                firstRefresh + WidgetExposureRefreshGate.MIN_INTERVAL_MS - 1L,
+            ),
+        )
+        assertTrue(
+            WidgetExposureRefreshGate.canRefresh(
+                firstRefresh,
+                firstRefresh + WidgetExposureRefreshGate.MIN_INTERVAL_MS,
+            ),
+        )
     }
 }

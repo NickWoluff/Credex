@@ -7,7 +7,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.util.SizeF
+import android.os.SystemClock
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.annotation.ColorRes
@@ -45,6 +46,7 @@ internal object QuotaWidgetPresenter {
         balances: List<BalanceService>,
         compact: Boolean,
         showCodex: Boolean,
+        allowCodexSecondary: Boolean = true,
     ): QuotaWidgetPresentation {
         val hasCodexWindow = showCodex && (state.hasWeekly || state.hasFiveHour)
         val primaryWindow = when {
@@ -53,7 +55,9 @@ internal object QuotaWidgetPresenter {
             else -> WidgetWindow.NONE
         }
         val primaryBalance = if (primaryWindow == WidgetWindow.NONE) balances.firstOrNull() else null
-        val showFiveHourSecondary = !compact && hasCodexWindow && state.hasWeekly && state.hasFiveHour
+        // 4×2 只选 Codex 时利用第二栏展示 5 小时窗口；若还选了另一服务，第二栏应让给该服务。
+        val showFiveHourSecondary = allowCodexSecondary && !compact && balances.isEmpty() &&
+            hasCodexWindow && state.hasWeekly && state.hasFiveHour
         val secondaryBalance = if (!compact && !showFiveHourSecondary) {
             if (primaryBalance != null) balances.getOrNull(1) else balances.firstOrNull()
         } else {
@@ -94,13 +98,14 @@ internal object QuotaWidgetPresenter {
  * Front-launcher widget. Unlike the rear display, this uses touch-first, launcher-safe
  * RemoteViews with responsive compact/medium compositions and no continuous animation.
  */
-class QuotaAppWidgetProvider : AppWidgetProvider() {
+open class QuotaAppWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
         if (appWidgetIds.isEmpty()) return
         val state = QuotaRepository.current(context)
-        val balances = StandardBalanceRepository.forSurface(context, BalanceSurface.LAUNCHER, 2)
-        appWidgetIds.forEach { updateOne(context, manager, it, state, balances, refreshing = false) }
-        enqueueRefresh(context, force = false)
+        appWidgetIds.forEach { id ->
+            updateOne(context, manager, id, state, compact = isCompact(manager, id), refreshing = false)
+        }
+        enqueueVisibleRefresh(context)
     }
 
     override fun onAppWidgetOptionsChanged(
@@ -109,14 +114,29 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
         appWidgetId: Int,
         newOptions: android.os.Bundle,
     ) {
+        migrateMiuiWidgetIds(context, manager, newOptions)
         updateOne(
             context,
             manager,
             appWidgetId,
             QuotaRepository.current(context),
-            StandardBalanceRepository.forSurface(context, BalanceSurface.LAUNCHER, 2),
+            compact = QuotaWidgetPresenter.isCompact(
+                newOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 120),
+            ),
             refreshing = false,
         )
+        enqueueVisibleRefresh(context)
+    }
+
+    override fun onRestored(context: Context, oldWidgetIds: IntArray, newWidgetIds: IntArray) {
+        super.onRestored(context, oldWidgetIds, newWidgetIds)
+        WidgetSelectionPreferences.remap(context, oldWidgetIds, newWidgetIds)
+        updateAll(context)
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        appWidgetIds.forEach { WidgetSelectionPreferences.clear(context, it) }
+        super.onDeleted(context, appWidgetIds)
     }
 
     override fun onEnabled(context: Context) {
@@ -127,64 +147,118 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            ACTION_REFRESH -> {
-                enqueueRefresh(context, force = true)
-                return
-            }
             ACTION_PINNED -> {
                 updateAll(context)
-                enqueueRefresh(context, force = false)
+                enqueueVisibleRefresh(context)
+                return
+            }
+            ACTION_MIUI_UPDATE -> {
+                val manager = AppWidgetManager.getInstance(context)
+                val ids = intent.getIntArrayExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS)
+                    ?: manager.getAppWidgetIds(ComponentName(context, javaClass))
+                onUpdate(context, manager, ids)
                 return
             }
         }
         super.onReceive(context, intent)
     }
 
-    /** Broadcast receivers only enqueue durable work; HTTP is performed by JobService. */
-    private fun enqueueRefresh(context: Context, force: Boolean) {
-        requestRefresh(context, force)
+    private fun migrateMiuiWidgetIds(
+        context: Context,
+        manager: AppWidgetManager,
+        options: android.os.Bundle,
+    ) {
+        if (!options.getBoolean(MIUI_ID_CHANGED) || options.getBoolean(MIUI_ID_CHANGED_COMPLETE)) return
+        val newIds = options.getIntArray(MIUI_NEW_IDS)
+        WidgetSelectionPreferences.remap(context, options.getIntArray(MIUI_OLD_IDS), newIds)
+        options.putBoolean(MIUI_ID_CHANGED_COMPLETE, true)
+        (newIds ?: IntArray(0)).forEach { manager.updateAppWidgetOptions(it, options) }
+    }
+
+    /**
+     * Android exposes no general foreground/visibility callback for App Widgets. Launchers call
+     * [onUpdate] when a widget is first shown, while HyperOS additionally forwards its exposure
+     * update broadcast. Both routes arrive here and share one persisted five-minute lease.
+     */
+    private fun enqueueVisibleRefresh(context: Context) {
+        if (WidgetExposureRefreshGate.tryClaim(context)) requestRefresh(context, force = false)
     }
 
     companion object {
-        const val ACTION_REFRESH = "org.orynnx.codexquota.action.REFRESH_WIDGET"
         const val ACTION_PINNED = "org.orynnx.codexquota.action.WIDGET_PINNED"
+        const val ACTION_MIUI_UPDATE = "miui.appwidget.action.APPWIDGET_UPDATE"
+        private const val MIUI_ID_CHANGED = "miuiIdChanged"
+        private const val MIUI_ID_CHANGED_COMPLETE = "miuiIdChangedComplete"
+        private const val MIUI_OLD_IDS = "miuiOldIds"
+        private const val MIUI_NEW_IDS = "miuiNewIds"
 
         fun updateAll(context: Context, state: QuotaState = QuotaRepository.current(context), refreshing: Boolean = false) {
             val appContext = context.applicationContext
             val manager = AppWidgetManager.getInstance(appContext)
-            val ids = manager.getAppWidgetIds(ComponentName(appContext, QuotaAppWidgetProvider::class.java))
-            val balances = StandardBalanceRepository.forSurface(appContext, BalanceSurface.LAUNCHER, 2)
-            ids.forEach { updateOne(appContext, manager, it, state, balances, refreshing) }
+            updateAllFor(appContext, manager, QuotaAppWidgetProvider::class.java, state, refreshing)
+            updateAllFor(appContext, manager, XiaomiQuotaWidgetProvider::class.java, state, refreshing)
         }
 
-        private fun updateOne(
+        private fun updateAllFor(
+            context: Context,
+            manager: AppWidgetManager,
+            provider: Class<out AppWidgetProvider>,
+            state: QuotaState,
+            refreshing: Boolean,
+        ) {
+            manager.getAppWidgetIds(ComponentName(context, provider)).forEach { id ->
+                updateOne(
+                    context,
+                    manager,
+                    id,
+                    state,
+                    compact = isCompact(manager, id),
+                    refreshing = refreshing,
+                )
+            }
+        }
+
+        internal fun updateOne(
             context: Context,
             manager: AppWidgetManager,
             appWidgetId: Int,
             state: QuotaState,
-            balances: List<BalanceService>,
+            compact: Boolean,
             refreshing: Boolean,
         ) {
-            val views = if (Build.VERSION.SDK_INT >= 31) {
-                RemoteViews(
-                    mapOf(
-                        SizeF(120f, 110f) to createViews(context, R.layout.widget_quota_small, state, balances, compact = true, refreshing),
-                        SizeF(280f, 110f) to createViews(context, R.layout.widget_quota_medium, state, balances, compact = false, refreshing),
-                    ),
-                )
+            captureRecommendedHeight(context, manager, appWidgetId)
+            val configured = if (WidgetSelectionPreferences.hasGlobalSelection(context)) {
+                WidgetSelectionPreferences.globalSelection(context, compact)
             } else {
-                val minWidth = manager.getAppWidgetOptions(appWidgetId)
-                    .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 120)
-                val compact = QuotaWidgetPresenter.isCompact(minWidth)
-                createViews(
-                    context,
-                    if (compact) R.layout.widget_quota_small else R.layout.widget_quota_medium,
-                    state,
-                    balances,
-                    compact,
-                    refreshing,
-                )
+                WidgetSelectionPreferences.get(context, appWidgetId)
             }
+            val allBalances = StandardBalanceRepository.forSurface(context, BalanceSurface.LAUNCHER, Int.MAX_VALUE)
+            val selected = configured.ifEmpty {
+                buildList {
+                    if (DashboardPreferences.showCodex(context) && (state.hasWeekly || state.hasFiveHour)) add(WidgetSelectionPreferences.CODEX_ID)
+                    if (isEmpty()) allBalances.firstOrNull()?.let { add(it.id) }
+                }
+            }
+            val byId = allBalances.associateBy(BalanceService::id)
+            val primaryId = selected.firstOrNull()
+            val showCodex = primaryId == WidgetSelectionPreferences.CODEX_ID
+            val balances = selected.mapNotNull { id ->
+                when {
+                    id == WidgetSelectionPreferences.CODEX_ID && !showCodex -> codexAsBalance(state)
+                    else -> byId[id]
+                }
+            }.take(if (compact) 1 else 2)
+            val views = createViews(
+                context,
+                if (compact) R.layout.widget_quota_small else R.layout.widget_quota_medium,
+                state,
+                balances,
+                compact,
+                refreshing,
+                showCodex,
+                allowCodexSecondary = !WidgetSelectionPreferences.hasGlobalSelection(context),
+                cardHeightDp = WidgetHeightPreferences.preferredHeightDp(context),
+            )
             manager.updateAppWidget(appWidgetId, views)
         }
 
@@ -195,14 +269,53 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
             balances: List<BalanceService>,
             compact: Boolean,
             refreshing: Boolean,
+            showCodex: Boolean,
+            allowCodexSecondary: Boolean,
+            cardHeightDp: Int,
         ): RemoteViews {
             val presentation = QuotaWidgetPresenter.present(
                 state,
                 balances,
                 compact,
-                showCodex = DashboardPreferences.showCodex(context),
+                showCodex = showCodex,
+                allowCodexSecondary = allowCodexSecondary,
             )
-            return RemoteViews(context.packageName, layoutId).apply {
+            // A 4x2 widget with one service reuses the full-width layout so the hidden
+            // second column never consumes half of the available text space.
+            val resolvedLayoutId = if (compact || !presentation.showSecondary) {
+                R.layout.widget_quota_small
+            } else {
+                layoutId
+            }
+            return RemoteViews(context.packageName, resolvedLayoutId).apply {
+                // Leave width entirely to the launcher. Height is applied only after
+                // a 2x2 recommendation or a valid user override is available.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && cardHeightDp > 0) {
+                    setViewLayoutHeight(
+                        R.id.widget_card_surface,
+                        cardHeightDp.toFloat(),
+                        TypedValue.COMPLEX_UNIT_DIP,
+                    )
+                    setViewLayoutHeight(
+                        R.id.widget_card_content,
+                        cardHeightDp.toFloat(),
+                        TypedValue.COMPLEX_UNIT_DIP,
+                    )
+                    if (resolvedLayoutId == R.layout.widget_quota_medium) {
+                        setViewLayoutHeight(
+                            R.id.widget_service_divider,
+                            minOf(108, (cardHeightDp - 36).coerceAtLeast(32)).toFloat(),
+                            TypedValue.COMPLEX_UNIT_DIP,
+                        )
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    setViewOutlinePreferredRadius(
+                        R.id.widget_card_surface,
+                        WidgetHeightPreferences.preferredCornerRadiusDp(context).toFloat(),
+                        TypedValue.COMPLEX_UNIT_DIP,
+                    )
+                }
                 val openApp = PendingIntent.getActivity(
                     context,
                     0,
@@ -210,22 +323,29 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
-                val refresh = PendingIntent.getBroadcast(
-                    context,
-                    1,
-                    Intent(context, QuotaAppWidgetProvider::class.java)
-                        .setAction(ACTION_REFRESH)
-                        .addFlags(Intent.FLAG_RECEIVER_FOREGROUND),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-                setOnClickPendingIntent(R.id.widget_root, openApp)
-                setOnClickPendingIntent(R.id.widget_refresh, refresh)
+                setOnClickPendingIntent(android.R.id.background, openApp)
 
-                bindPrimary(context, presentation, state, compact)
-                if (!compact) {
+                val compactDetails = compact || presentation.showSecondary
+                bindPrimary(context, presentation, state, compactDetails)
+                val showHealth = DashboardPreferences.showHealth(context)
+                setTextColor(
+                    R.id.widget_primary_status_dot,
+                    context.getColor(statusColor(state.health, presentation.primaryBalance, refreshing = false)),
+                )
+                setViewVisibility(R.id.widget_primary_status_dot, if (showHealth) View.VISIBLE else View.GONE)
+                if (!compact && presentation.showSecondary) {
+                    val showSecondary = presentation.showSecondary
                     setViewVisibility(
                         R.id.widget_secondary_group,
-                        if (presentation.showSecondary) View.VISIBLE else View.GONE,
+                        if (showSecondary) View.VISIBLE else View.GONE,
+                    )
+                    setViewVisibility(
+                        R.id.widget_secondary_title_group,
+                        if (showSecondary) View.VISIBLE else View.GONE,
+                    )
+                    setViewVisibility(
+                        R.id.widget_service_divider,
+                        if (showSecondary) View.VISIBLE else View.GONE,
                     )
                     if (presentation.showFiveHourSecondary) {
                         setTextViewText(R.id.widget_secondary_label, context.getString(R.string.widget_five_hour))
@@ -243,22 +363,25 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
                         val service = presentation.secondaryBalance
                         setTextViewText(R.id.widget_secondary_label, service.name)
                         setTextViewText(R.id.widget_secondary_value, balanceDisplayValue(service))
-                        setTextViewText(R.id.widget_secondary_reset, balanceSubtext(service))
-                        setViewVisibility(R.id.widget_secondary_progress, View.INVISIBLE)
+                        setTextViewText(R.id.widget_secondary_reset, balanceSubtext(service, compact = true))
+                        val percent = balanceDisplayPercent(service)
+                        if (percent != null) {
+                            setProgressBar(R.id.widget_secondary_progress, 100, percent, false)
+                            setViewVisibility(R.id.widget_secondary_progress, View.VISIBLE)
+                        } else {
+                            setViewVisibility(R.id.widget_secondary_progress, View.INVISIBLE)
+                        }
                     }
+                    val secondaryBalance = presentation.secondaryBalance
+                    setTextColor(
+                        R.id.widget_secondary_status_dot,
+                        context.getColor(statusColor(state.health, secondaryBalance, refreshing = false)),
+                    )
+                    setViewVisibility(R.id.widget_secondary_status_dot, if (showHealth) View.VISIBLE else View.GONE)
                 }
 
-                val status = statusText(context, state, presentation, compact, refreshing)
-                setTextViewText(R.id.widget_status, status.first)
-                setTextViewText(R.id.widget_status_detail, status.second)
-                setTextColor(R.id.widget_status_dot, context.getColor(statusColor(state.health, presentation.primaryBalance, refreshing)))
-                setContentDescription(
-                    R.id.widget_refresh,
-                    context.getString(if (refreshing) R.string.widget_refreshing else R.string.widget_refresh),
-                )
-                setBoolean(R.id.widget_refresh, "setEnabled", !refreshing)
-                setViewVisibility(R.id.widget_refresh_progress, if (refreshing) View.VISIBLE else View.GONE)
-                setViewVisibility(R.id.widget_refresh_icon, if (refreshing) View.INVISIBLE else View.VISIBLE)
+                setTextViewText(R.id.widget_status, lastUpdatedText(context, state, presentation, refreshing))
+                setViewVisibility(R.id.widget_status_group, View.VISIBLE)
             }
         }
 
@@ -272,8 +395,14 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
                 val service = presentation.primaryBalance
                 setTextViewText(R.id.widget_primary_label, service.name)
                 setTextViewText(R.id.widget_primary_value, balanceDisplayValue(service))
-                setTextViewText(R.id.widget_primary_reset, balanceSubtext(service))
-                setViewVisibility(R.id.widget_primary_progress, View.INVISIBLE)
+                setTextViewText(R.id.widget_primary_reset, balanceSubtext(service, compact))
+                val percent = balanceDisplayPercent(service)
+                if (percent != null) {
+                    setProgressBar(R.id.widget_primary_progress, 100, percent, false)
+                    setViewVisibility(R.id.widget_primary_progress, View.VISIBLE)
+                } else {
+                    setViewVisibility(R.id.widget_primary_progress, View.INVISIBLE)
+                }
                 return
             }
             when (presentation.primaryWindow) {
@@ -324,56 +453,17 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        private fun statusText(
+        private fun lastUpdatedText(
             context: Context,
             state: QuotaState,
             presentation: QuotaWidgetPresentation,
-            compact: Boolean,
             refreshing: Boolean,
-        ): Pair<String, String> {
-            presentation.primaryBalance?.let { service ->
-                if (refreshing) return context.getString(R.string.widget_refreshing) to service.updatedAt
-                val detail = listOf(service.status, service.updatedAt.takeUnless { it == "--" }).filterNotNull().filter { it.isNotBlank() }.joinToString(" · ")
-                return if (compact) service.name to detail else service.name to (service.detail.ifBlank { detail })
-            }
-            if (refreshing) {
-                return context.getString(R.string.widget_refreshing) to
-                    state.updatedAt.takeUnless { it == "--" }.orEmpty()
-            }
-            val primaryReset = when {
-                state.hasWeekly -> state.weeklyReset to state.weeklyResetAtEpoch
-                state.hasFiveHour -> state.fiveHourReset to state.fiveHourResetAtEpoch
-                else -> "--" to 0L
-            }
-            val countdown = QuotaResetText.widgetStatus(primaryReset.second)
-            val balanceHint = presentation.balanceHint?.let { "${it.name} ${balanceDisplayValue(it)}" }
-            return when (state.health) {
-                QuotaHealth.FRESH -> if (compact) {
-                    (balanceHint ?: context.getString(R.string.widget_last_updated_at, state.updatedAt)) to ""
-                } else {
-                    if (balanceHint != null) {
-                        context.getString(R.string.widget_balance) to balanceHint
-                    } else {
-                        context.getString(R.string.widget_last_updated) to
-                            listOf(state.updatedAt, countdown).filter { it.isNotBlank() && it != "--" }.joinToString(" · ")
-                    }
-                }
-                QuotaHealth.EMPTY -> context.getString(R.string.widget_connected) to context.getString(R.string.widget_no_window)
-                QuotaHealth.CACHED -> if (compact) {
-                    (balanceHint ?: context.getString(R.string.widget_last_updated_at, state.updatedAt)) to ""
-                } else {
-                    if (balanceHint != null) {
-                        context.getString(R.string.widget_cached) to balanceHint
-                    } else {
-                        context.getString(R.string.widget_cached) to
-                            listOf(context.getString(R.string.widget_last_success, state.updatedAt), countdown)
-                                .filter { it.isNotBlank() && it != "--" }
-                                .joinToString(" · ")
-                    }
-                }
-                QuotaHealth.AUTH_REQUIRED -> context.getString(R.string.widget_auth_required) to context.getString(R.string.widget_tap_to_open)
-                QuotaHealth.SIGNED_OUT -> context.getString(R.string.widget_not_connected) to context.getString(R.string.widget_tap_to_open)
-            }
+        ): String {
+            val updatedAt = presentation.primaryBalance?.updatedAt
+                ?.takeUnless { it == "--" }
+                ?: state.updatedAt
+            val text = context.getString(R.string.widget_last_updated_at, updatedAt)
+            return if (refreshing) "${context.getString(R.string.widget_refreshing)} · $text" else text
         }
 
         @ColorRes
@@ -401,12 +491,112 @@ class QuotaAppWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        private fun balanceSubtext(service: BalanceService): String =
-            service.detail.ifBlank {
+        private fun balanceSubtext(service: BalanceService, compact: Boolean): String {
+            val fallback = service.detail.ifBlank {
                 listOf(service.status, service.updatedAt.takeUnless { it == "--" })
                     .filterNotNull()
                     .filter { it.isNotBlank() }
                     .joinToString(" · ")
             }
+            if (service.displayKind != BalanceDisplayKind.TOKEN_PLAN) return fallback
+            if (!compact) return fallback
+
+            val total = service.total.toBigDecimalOrNull() ?: return fallback.replaceFirst(" · ", "\n")
+            val remaining = service.balance.toBigDecimalOrNull() ?: return fallback.replaceFirst(" · ", "\n")
+            val used = service.used.toBigDecimalOrNull() ?: total.subtract(remaining)
+            val displayed = if (service.tokenPlanDisplay == TokenPlanDisplay.REMAINING) remaining else used
+            val label = if (service.tokenPlanDisplay == TokenPlanDisplay.REMAINING) "剩余" else "已用"
+            val plan = service.detail.substringBefore(" · ").ifBlank { "Token Plan" }
+            val unit = when {
+                service.detail.contains("Credits", ignoreCase = true) -> "Credits"
+                service.detail.contains("Tokens", ignoreCase = true) -> "Tokens"
+                else -> "Tokens"
+            }
+            return "$plan · $label ${formatWidgetTokenCount(displayed)}/${formatWidgetTokenCount(total)} $unit"
+        }
+
+        private fun formatWidgetTokenCount(value: java.math.BigDecimal): String {
+            val absolute = value.abs()
+            val (divisor, suffix) = when {
+                absolute >= java.math.BigDecimal("1000000000") -> java.math.BigDecimal("1000000000") to "B"
+                absolute >= java.math.BigDecimal("1000000") -> java.math.BigDecimal("1000000") to "M"
+                absolute >= java.math.BigDecimal("1000") -> java.math.BigDecimal("1000") to "K"
+                else -> return value.setScale(0, java.math.RoundingMode.DOWN).toPlainString()
+            }
+            return value.divide(divisor, 1, java.math.RoundingMode.HALF_UP)
+                .stripTrailingZeros()
+                .toPlainString() + suffix
+        }
+
+        private fun balanceDisplayPercent(service: BalanceService): Int? =
+            balanceDisplayValue(service)
+                .takeIf { service.displayKind == BalanceDisplayKind.TOKEN_PLAN && it.endsWith('%') }
+                ?.dropLast(1)
+                ?.toDoubleOrNull()
+                ?.let { kotlin.math.ceil(it).toInt() }
+                ?.coerceIn(0, 100)
+
+        internal fun isCompact(manager: AppWidgetManager, appWidgetId: Int): Boolean =
+            QuotaWidgetPresenter.isCompact(
+                manager.getAppWidgetOptions(appWidgetId)
+                    .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 120),
+            )
+
+        private fun codexAsBalance(state: QuotaState): BalanceService? {
+            val remaining = when {
+                state.hasWeekly -> state.weeklyRemaining
+                state.hasFiveHour -> state.fiveHourRemaining
+                else -> return null
+            }.coerceIn(0, 100)
+            val reset = if (state.hasWeekly) state.weeklyReset else state.fiveHourReset
+            return BalanceService(
+                id = WidgetSelectionPreferences.CODEX_ID,
+                name = "OpenAI Codex",
+                endpoint = "",
+                balance = remaining.toString(),
+                detail = reset,
+                updatedAt = state.updatedAt,
+                status = if (state.health == QuotaHealth.CACHED) "缓存" else "已连接",
+                health = if (state.health == QuotaHealth.CACHED) BalanceHealth.CACHED else BalanceHealth.FRESH,
+                displayKind = BalanceDisplayKind.TOKEN_PLAN,
+                used = (100 - remaining).toString(),
+                total = "100",
+                tokenPlanDisplay = TokenPlanDisplay.REMAINING,
+                )
+            }
+        private fun captureRecommendedHeight(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
+            if (WidgetHeightPreferences.hasRecordedRecommendation(context)) return
+            val options = manager.getAppWidgetOptions(appWidgetId)
+            val width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
+            val height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
+            // A launcher reports cell bounds in dp. Only capture an initial square
+            // (2x2) instance; resized and wide instances must not change the baseline.
+            if (width > 0 && height > 0 && kotlin.math.abs(width - height) <= 32) {
+                WidgetHeightPreferences.recordRecommendationIfAbsent(context, width)
+            }
+        }
     }
 }
+
+/** Persists visibility-driven refreshes across process recreation without retaining user data. */
+internal object WidgetExposureRefreshGate {
+    private const val PREFERENCES = "widget_exposure_refresh"
+    private const val LAST_REFRESH_ELAPSED = "last_refresh_elapsed"
+    internal const val MIN_INTERVAL_MS = 5 * 60 * 1_000L
+
+    @Synchronized
+    fun tryClaim(context: Context, nowElapsed: Long = SystemClock.elapsedRealtime()): Boolean {
+        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        val previous = preferences.getLong(LAST_REFRESH_ELAPSED, 0L)
+        if (!canRefresh(previous, nowElapsed)) return false
+        preferences.edit().putLong(LAST_REFRESH_ELAPSED, nowElapsed).apply()
+        return true
+    }
+
+    internal fun canRefresh(previousElapsed: Long, nowElapsed: Long): Boolean =
+        previousElapsed <= 0L || nowElapsed < previousElapsed || nowElapsed - previousElapsed >= MIN_INTERVAL_MS
+}
+
+/** Xiaomi HyperOS widget provider. It is intentionally a separate receiver so the
+ * native Android widget pool and Xiaomi's widget center can evolve independently. */
+class XiaomiQuotaWidgetProvider : QuotaAppWidgetProvider()

@@ -1,6 +1,7 @@
 package org.orynnx.codexquota
 
 import android.content.Context
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -9,6 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.security.KeyStore
 import java.time.Instant
 import java.time.ZoneId
@@ -29,9 +31,88 @@ enum class BalanceAuthMode {
     SILICONFLOW_CONSOLE,
     MIMO_BALANCE,
     MIMO_TOKEN_PLAN,
+    VOLCENGINE_BALANCE,
+    VOLCENGINE_CODING_PLAN,
+    VOLCENGINE_AGENT_PLAN,
+    OPENCODE_ZEN,
+    OPENCODE_GO,
+    KIMI,
+    KIMI_BALANCE,
+    GLM_BALANCE,
+    GLM_CODING_PLAN,
 }
 
 enum class BalanceDisplayKind { AMOUNT, TOKEN_PLAN }
+
+internal fun BalanceAuthMode.isPlan(): Boolean = when (this) {
+    BalanceAuthMode.MIMO_TOKEN_PLAN,
+    BalanceAuthMode.VOLCENGINE_CODING_PLAN,
+    BalanceAuthMode.VOLCENGINE_AGENT_PLAN,
+    BalanceAuthMode.OPENCODE_GO,
+    BalanceAuthMode.KIMI,
+    BalanceAuthMode.GLM_CODING_PLAN -> true
+    else -> false
+}
+
+internal fun BalanceAuthMode.usesBrowserLogin(): Boolean = when (this) {
+    BalanceAuthMode.SILICONFLOW_CONSOLE,
+    BalanceAuthMode.MIMO_BALANCE,
+    BalanceAuthMode.MIMO_TOKEN_PLAN,
+    BalanceAuthMode.VOLCENGINE_BALANCE,
+    BalanceAuthMode.VOLCENGINE_CODING_PLAN,
+    BalanceAuthMode.VOLCENGINE_AGENT_PLAN,
+    BalanceAuthMode.OPENCODE_ZEN,
+    BalanceAuthMode.GLM_BALANCE,
+    BalanceAuthMode.GLM_CODING_PLAN -> true
+    else -> false
+}
+
+internal fun BalanceAuthMode.usesApiToken(): Boolean = when (this) {
+    BalanceAuthMode.API_KEY,
+    BalanceAuthMode.DEEPSEEK_API_KEY,
+    BalanceAuthMode.OPENCODE_GO,
+    BalanceAuthMode.KIMI,
+    BalanceAuthMode.KIMI_BALANCE -> true
+    else -> false
+}
+
+/** Token Plan values can be presented as consumption or remaining quota. */
+enum class TokenPlanDisplay { USED, REMAINING }
+
+/** 一个订阅服务可同时包含 5 小时、周、月等多个官方配额窗口。 */
+data class ServiceQuotaWindow(
+    val id: String,
+    val label: String,
+    val used: String,
+    val total: String,
+    val resetAt: String = "",
+)
+
+data class KimiDeviceAuthorization(
+    val deviceCode: String,
+    val userCode: String,
+    val verificationUriComplete: String,
+    val expiresInSeconds: Long,
+    val intervalSeconds: Long,
+)
+
+sealed interface KimiDevicePollResult {
+    data object Pending : KimiDevicePollResult
+    data class Success(
+        val accessToken: String,
+        val refreshToken: String,
+        val expiresInSeconds: Long,
+    ) : KimiDevicePollResult
+    data class Failed(val message: String) : KimiDevicePollResult
+}
+
+enum class UiStyle { MATERIAL, MIUIX }
+
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+enum class MaterialAccent { BLUE, PURPLE, GREEN, ORANGE, RED }
+
+enum class MaterialPaletteStyle { TONAL_SPOT, VIBRANT, EXPRESSIVE, NEUTRAL }
 
 /** A display host that can independently opt a balance service in or out. */
 enum class BalanceSurface(val shortLabel: String, val label: String) {
@@ -62,6 +143,8 @@ data class BalanceService(
     val used: String = "",
     val total: String = "",
     val resetAt: String = "",
+    val tokenPlanDisplay: TokenPlanDisplay = TokenPlanDisplay.USED,
+    val quotaWindows: List<ServiceQuotaWindow> = emptyList(),
 )
 
 /** Display-only preferences. They never stop network refresh or delete credentials. */
@@ -69,13 +152,45 @@ object DashboardPreferences {
     private const val PREFS = "quota_display_preferences"
     private const val SHOW_CODEX = "show_codex"
     private const val SHOW_HEALTH = "show_health"
+    private const val SHOW_PROVIDER_ICONS = "show_provider_icons"
+    private const val UI_STYLE = "ui_style"
+    private const val MATERIAL_DYNAMIC_COLOR = "material_dynamic_color"
+    private const val THEME_MODE = "theme_mode"
+    private const val MATERIAL_ACCENT = "material_accent"
+    private const val MATERIAL_PALETTE_STYLE = "material_palette_style"
+    private const val MIUIX_BLUR = "miuix_blur"
+    private const val PREDICTIVE_BACK = "predictive_back"
 
     fun showCodex(context: Context) = prefs(context).getBoolean(SHOW_CODEX, true)
     fun setShowCodex(context: Context, value: Boolean) = prefs(context).edit { putBoolean(SHOW_CODEX, value) }
     fun showHealth(context: Context) = prefs(context).getBoolean(SHOW_HEALTH, true)
     fun setShowHealth(context: Context, value: Boolean) = prefs(context).edit { putBoolean(SHOW_HEALTH, value) }
+    fun showProviderIcons(context: Context) = prefs(context).getBoolean(SHOW_PROVIDER_ICONS, true)
+    fun setShowProviderIcons(context: Context, value: Boolean) =
+        prefs(context).edit { putBoolean(SHOW_PROVIDER_ICONS, value) }
+    fun uiStyle(context: Context): UiStyle = runCatching {
+        UiStyle.valueOf(prefs(context).getString(UI_STYLE, UiStyle.MATERIAL.name).orEmpty())
+    }.getOrDefault(UiStyle.MATERIAL)
+    fun setUiStyle(context: Context, value: UiStyle) = prefs(context).edit { putString(UI_STYLE, value.name) }
+    fun materialDynamicColor(context: Context) = prefs(context).getBoolean(MATERIAL_DYNAMIC_COLOR, true)
+    fun setMaterialDynamicColor(context: Context, value: Boolean) = prefs(context).edit { putBoolean(MATERIAL_DYNAMIC_COLOR, value) }
+    fun themeMode(context: Context): ThemeMode = enumPreference(context, THEME_MODE, ThemeMode.SYSTEM)
+    fun setThemeMode(context: Context, value: ThemeMode) = prefs(context).edit { putString(THEME_MODE, value.name) }
+    fun materialAccent(context: Context): MaterialAccent = enumPreference(context, MATERIAL_ACCENT, MaterialAccent.BLUE)
+    fun setMaterialAccent(context: Context, value: MaterialAccent) = prefs(context).edit { putString(MATERIAL_ACCENT, value.name) }
+    fun materialPaletteStyle(context: Context): MaterialPaletteStyle =
+        enumPreference(context, MATERIAL_PALETTE_STYLE, MaterialPaletteStyle.TONAL_SPOT)
+    fun setMaterialPaletteStyle(context: Context, value: MaterialPaletteStyle) =
+        prefs(context).edit { putString(MATERIAL_PALETTE_STYLE, value.name) }
+    fun miuixBlur(context: Context) = prefs(context).getBoolean(MIUIX_BLUR, true)
+    fun setMiuixBlur(context: Context, value: Boolean) = prefs(context).edit { putBoolean(MIUIX_BLUR, value) }
+    fun predictiveBack(context: Context) = prefs(context).getBoolean(PREDICTIVE_BACK, true)
+    fun setPredictiveBack(context: Context, value: Boolean) = prefs(context).edit { putBoolean(PREDICTIVE_BACK, value) }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private inline fun <reified T : Enum<T>> enumPreference(context: Context, key: String, fallback: T): T =
+        runCatching { enumValueOf<T>(prefs(context).getString(key, fallback.name).orEmpty()) }.getOrDefault(fallback)
 }
 
 private data class StoredBalanceService(
@@ -105,6 +220,8 @@ private data class StoredBalanceService(
     val used: String = "",
     val total: String = "",
     val resetAt: String = "",
+    val tokenPlanDisplay: TokenPlanDisplay = TokenPlanDisplay.USED,
+    val quotaWindows: List<ServiceQuotaWindow> = emptyList(),
 ) {
     fun public() = BalanceService(
         id = id,
@@ -126,6 +243,8 @@ private data class StoredBalanceService(
         used = used,
         total = total,
         resetAt = resetAt,
+        tokenPlanDisplay = tokenPlanDisplay,
+        quotaWindows = quotaWindows,
     )
 
     fun json(): JSONObject = JSONObject().apply {
@@ -155,10 +274,22 @@ private data class StoredBalanceService(
         put("used", used)
         put("total", total)
         put("reset_at", resetAt)
+        put("token_plan_display", tokenPlanDisplay.name)
+        put("quota_windows", JSONArray().apply {
+            quotaWindows.forEach { window ->
+                put(JSONObject().apply {
+                    put("id", window.id)
+                    put("label", window.label)
+                    put("used", window.used)
+                    put("total", window.total)
+                    put("reset_at", window.resetAt)
+                })
+            }
+        })
     }
 
     companion object {
-        fun from(json: JSONObject): StoredBalanceService {
+        fun from(json: JSONObject, decryptSecrets: Boolean = true): StoredBalanceService {
             val health = runCatching { BalanceHealth.valueOf(json.optString("health")) }
                 .getOrDefault(BalanceHealth.NOT_CONNECTED)
             val authMode = runCatching { BalanceAuthMode.valueOf(json.optString("auth_mode")) }
@@ -169,11 +300,11 @@ private data class StoredBalanceService(
                 endpoint = json.optString("endpoint"),
                 authMode = authMode,
                 email = json.optString("email"),
-                password = BalanceSecretBox.open(json.optString("password")),
-                accessToken = BalanceSecretBox.open(json.optString("access_token")),
-                refreshToken = BalanceSecretBox.open(json.optString("refresh_token")),
+                password = json.optString("password").let { if (decryptSecrets) BalanceSecretBox.open(it) else it },
+                accessToken = json.optString("access_token").let { if (decryptSecrets) BalanceSecretBox.open(it) else it },
+                refreshToken = json.optString("refresh_token").let { if (decryptSecrets) BalanceSecretBox.open(it) else it },
                 subjectId = json.optString("subject_id"),
-                sessionToken = BalanceSecretBox.open(json.optString("session_token")),
+                sessionToken = json.optString("session_token").let { if (decryptSecrets) BalanceSecretBox.open(it) else it },
                 expiresAtMillis = json.optLong("expires_at"),
                 balance = json.optString("balance", "--"),
                 currency = json.optString("currency", "USD"),
@@ -191,6 +322,21 @@ private data class StoredBalanceService(
                 used = json.optString("used"),
                 total = json.optString("total"),
                 resetAt = json.optString("reset_at"),
+                tokenPlanDisplay = runCatching { TokenPlanDisplay.valueOf(json.optString("token_plan_display")) }
+                    .getOrDefault(TokenPlanDisplay.USED),
+                quotaWindows = json.optJSONArray("quota_windows")?.let { array ->
+                    (0 until array.length()).mapNotNull { index ->
+                        array.optJSONObject(index)?.let { item ->
+                            ServiceQuotaWindow(
+                                id = item.optString("id", index.toString()),
+                                label = item.optString("label"),
+                                used = item.optString("used"),
+                                total = item.optString("total"),
+                                resetAt = item.optString("reset_at"),
+                            )
+                        }
+                    }
+                }.orEmpty(),
             )
         }
 
@@ -254,23 +400,26 @@ object StandardBalanceRepository {
     private const val PREFS = "standard_balance_services"
     private const val SERVICES = "services_v1"
     private const val MIN_REFRESH_MILLIS = 60_000L
+    private const val KIMI_OAUTH_HOST = "https://auth.kimi.com"
+    private const val KIMI_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"
     private val lock = Any()
     private val clockFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
 
-    fun list(context: Context): List<BalanceService> = stored(context).map { it.public() }
+    fun list(context: Context): List<BalanceService> = stored(context, decryptSecrets = false)
+        .map { it.public() }
 
     fun forSurface(context: Context, surface: BalanceSurface, limit: Int): List<BalanceService> =
         list(context)
             .filter { it.visible && surface in it.displaySurfaces }
             .take(limit.coerceAtLeast(0))
 
-    fun hasConfiguredService(context: Context): Boolean = stored(context).isNotEmpty()
+    fun hasConfiguredService(context: Context): Boolean = stored(context, decryptSecrets = false).isNotEmpty()
 
-    fun hasAuthenticatedService(context: Context): Boolean = stored(context).any {
+    fun hasAuthenticatedService(context: Context): Boolean = stored(context, decryptSecrets = false).any {
         it.accessToken.isNotBlank() ||
             (it.email.isNotBlank() && it.password.isNotBlank()) ||
             (it.subjectId.isNotBlank() && it.sessionToken.isNotBlank()) ||
-            ((it.authMode == BalanceAuthMode.MIMO_BALANCE || it.authMode == BalanceAuthMode.MIMO_TOKEN_PLAN) && it.sessionToken.isNotBlank())
+            (it.authMode.usesBrowserLogin() && it.sessionToken.isNotBlank())
     }
 
     data class Credentials(val account: String, val secret: String)
@@ -278,10 +427,20 @@ object StandardBalanceRepository {
     fun credentials(context: Context, id: String): Credentials {
         val service = requireStored(context, id)
         return when (service.authMode) {
-            BalanceAuthMode.API_KEY -> Credentials("", service.accessToken)
-            BalanceAuthMode.DEEPSEEK_API_KEY -> Credentials("", service.accessToken)
+            BalanceAuthMode.API_KEY,
+            BalanceAuthMode.DEEPSEEK_API_KEY,
+            BalanceAuthMode.OPENCODE_GO,
+            BalanceAuthMode.KIMI,
+            BalanceAuthMode.KIMI_BALANCE -> Credentials("", service.accessToken)
             BalanceAuthMode.SILICONFLOW_CONSOLE -> Credentials(service.subjectId, service.sessionToken)
-            BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> Credentials("", service.sessionToken)
+            BalanceAuthMode.MIMO_BALANCE,
+            BalanceAuthMode.MIMO_TOKEN_PLAN,
+            BalanceAuthMode.VOLCENGINE_BALANCE,
+            BalanceAuthMode.VOLCENGINE_CODING_PLAN,
+            BalanceAuthMode.VOLCENGINE_AGENT_PLAN,
+            BalanceAuthMode.OPENCODE_ZEN,
+            BalanceAuthMode.GLM_BALANCE,
+            BalanceAuthMode.GLM_CODING_PLAN -> Credentials("", service.sessionToken)
             BalanceAuthMode.EMAIL_PASSWORD -> Credentials(service.email, service.password)
         }
     }
@@ -301,6 +460,13 @@ object StandardBalanceRepository {
         notifyChanged(context)
     }
 
+    fun setTokenPlanDisplay(context: Context, id: String, display: TokenPlanDisplay) {
+        stored(context).firstOrNull { it.id == id }?.let { service ->
+            replace(context, service.copy(tokenPlanDisplay = display))
+            notifyChanged(context)
+        }
+    }
+
     fun move(context: Context, id: String, direction: Int) {
         if (direction == 0) return
         val values = stored(context).toMutableList()
@@ -310,6 +476,21 @@ object StandardBalanceRepository {
         val item = values.removeAt(index)
         values.add(target, item)
         saveStored(context, values)
+        notifyChanged(context)
+    }
+
+    fun reorder(context: Context, orderedIds: List<String>) {
+        if (orderedIds.isEmpty()) return
+        val current = stored(context)
+        val currentById = current.associateBy { it.id }
+        val ordered = orderedIds.mapNotNull(currentById::get)
+        if (ordered.isEmpty()) return
+        val orderedSet = orderedIds.toSet()
+        var orderedIndex = 0
+        val next = current.map { service ->
+            if (service.id in orderedSet) ordered[orderedIndex++] else service
+        }
+        saveStored(context, next)
         notifyChanged(context)
     }
 
@@ -344,10 +525,11 @@ object StandardBalanceRepository {
                 sessionToken = "",
                 expiresAtMillis = 0L,
                 balance = "--",
-                displayKind = if (authMode == BalanceAuthMode.MIMO_TOKEN_PLAN) BalanceDisplayKind.TOKEN_PLAN else BalanceDisplayKind.AMOUNT,
+                displayKind = if (authMode.isPlan()) BalanceDisplayKind.TOKEN_PLAN else BalanceDisplayKind.AMOUNT,
                 used = "",
                 total = "",
                 resetAt = "",
+                quotaWindows = emptyList(),
                 updatedAt = "--",
                 status = "需要重新登录",
                 health = BalanceHealth.NOT_CONNECTED,
@@ -372,10 +554,62 @@ object StandardBalanceRepository {
         return when (service.authMode) {
             BalanceAuthMode.API_KEY -> loginApiKey(context, service, secret)
             BalanceAuthMode.DEEPSEEK_API_KEY -> loginDeepSeekApiKey(context, service, secret)
+            BalanceAuthMode.OPENCODE_GO -> loginBearerPlan(context, service, secret, ::fetchOpenCodeGo)
+            BalanceAuthMode.KIMI -> loginBearerPlan(context, service, secret) { fetchKimi(context, it) }
+            BalanceAuthMode.KIMI_BALANCE -> loginKimiBalance(context, service, secret)
             BalanceAuthMode.SILICONFLOW_CONSOLE -> loginSiliconFlowConsole(context, service, account, secret)
             BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> loginMimo(context, service, secret)
+            BalanceAuthMode.VOLCENGINE_BALANCE,
+            BalanceAuthMode.VOLCENGINE_CODING_PLAN,
+            BalanceAuthMode.VOLCENGINE_AGENT_PLAN,
+            BalanceAuthMode.OPENCODE_ZEN,
+            BalanceAuthMode.GLM_BALANCE,
+            BalanceAuthMode.GLM_CODING_PLAN -> error("该服务需要先完成内置浏览器登录")
             BalanceAuthMode.EMAIL_PASSWORD -> loginEmailPassword(context, service, account, secret)
         }
+    }
+
+    private fun loginBearerPlan(
+        context: Context,
+        service: StoredBalanceService,
+        token: CharArray,
+        fetch: (StoredBalanceService) -> StoredBalanceService,
+    ): BalanceService {
+        val tokenText = String(token).trim()
+        check(tokenText.isNotBlank()) { "请输入访问令牌或 API Key" }
+        val withToken = service.copy(
+            accessToken = tokenText,
+            refreshToken = "",
+            expiresAtMillis = Long.MAX_VALUE,
+            displayKind = BalanceDisplayKind.TOKEN_PLAN,
+        )
+        replace(context, withToken)
+        val next = fetch(withToken)
+        replace(context, next)
+        QuotaRefreshScheduler.schedule(context)
+        notifyChanged(context)
+        return next.public()
+    }
+
+    private fun loginKimiBalance(
+        context: Context,
+        service: StoredBalanceService,
+        token: CharArray,
+    ): BalanceService {
+        val tokenText = String(token).trim()
+        check(tokenText.isNotBlank()) { "请输入 Kimi API Key" }
+        val withToken = service.copy(
+            accessToken = tokenText,
+            refreshToken = "",
+            expiresAtMillis = Long.MAX_VALUE,
+            displayKind = BalanceDisplayKind.AMOUNT,
+        )
+        replace(context, withToken)
+        val next = fetchKimiBalance(withToken)
+        replace(context, next)
+        QuotaRefreshScheduler.schedule(context)
+        notifyChanged(context)
+        return next.public()
     }
 
     /** Connect a console service with credentials captured by the embedded browser. */
@@ -400,12 +634,133 @@ object StandardBalanceRepository {
         return try {
             val service = requireStored(context, id)
             check(service.authMode == BalanceAuthMode.MIMO_BALANCE || service.authMode == BalanceAuthMode.MIMO_TOKEN_PLAN) {
-                "不是 MIMO 服务"
+                "不是 Xiaomi MIMO 服务"
             }
             loginMimo(context, service, secret)
         } finally {
             secret.fill('\u0000')
         }
+    }
+
+    fun connectConsoleSession(
+        context: Context,
+        id: String,
+        sessionToken: String,
+        capturedBalance: String = "",
+    ): BalanceService {
+        val service = requireStored(context, id)
+        check(service.authMode.usesBrowserLogin()) { "该服务不使用控制台登录" }
+        check(service.authMode != BalanceAuthMode.SILICONFLOW_CONSOLE && service.authMode != BalanceAuthMode.MIMO_BALANCE && service.authMode != BalanceAuthMode.MIMO_TOKEN_PLAN) {
+            "请使用对应平台的专用登录流程"
+        }
+        val cookie = sessionToken.trim()
+        check(cookie.isNotBlank()) { "没有获取到控制台登录会话" }
+        val withSession = service.copy(
+            sessionToken = cookie,
+            accessToken = "",
+            refreshToken = "",
+            expiresAtMillis = Long.MAX_VALUE,
+            displayKind = if (service.authMode.isPlan()) BalanceDisplayKind.TOKEN_PLAN else BalanceDisplayKind.AMOUNT,
+        )
+        replace(context, withSession)
+        val capturedMode = service.authMode in setOf(
+            BalanceAuthMode.OPENCODE_ZEN,
+            BalanceAuthMode.VOLCENGINE_BALANCE,
+            BalanceAuthMode.GLM_BALANCE,
+        )
+        val next = if (capturedMode && capturedBalance.toBigDecimalOrNull() != null) {
+            withSession.copy(
+                balance = formatBalance(capturedBalance.toBigDecimal()),
+                currency = if (service.authMode == BalanceAuthMode.OPENCODE_ZEN) "USD" else "CNY",
+                detail = when (service.authMode) {
+                    BalanceAuthMode.OPENCODE_ZEN -> "OpenCode Zen 当前余额"
+                    BalanceAuthMode.VOLCENGINE_BALANCE -> "火山引擎账户可用余额"
+                    BalanceAuthMode.GLM_BALANCE -> "GLM 账户可用余额"
+                    else -> "账户余额"
+                },
+                updatedAt = clock(),
+                lastAttemptAtMillis = System.currentTimeMillis(),
+                status = "已连接",
+                health = BalanceHealth.FRESH,
+            )
+        } else {
+            fetchConsoleService(withSession)
+        }
+        replace(context, next)
+        QuotaRefreshScheduler.schedule(context)
+        notifyChanged(context)
+        return next.public()
+    }
+
+    fun requestKimiDeviceAuthorization(context: Context): KimiDeviceAuthorization {
+        val (_, data) = requestForm(
+            "$KIMI_OAUTH_HOST/api/oauth/device_authorization",
+            mapOf("client_id" to KIMI_CLIENT_ID),
+            kimiIdentityHeaders(context),
+        )
+        val deviceCode = data.optString("device_code")
+        val userCode = data.optString("user_code")
+        val verificationUriComplete = data.optString("verification_uri_complete")
+        check(deviceCode.isNotBlank() && userCode.isNotBlank() && verificationUriComplete.isNotBlank()) {
+            "Kimi 授权服务未返回完整的设备登录信息"
+        }
+        return KimiDeviceAuthorization(
+            deviceCode = deviceCode,
+            userCode = userCode,
+            verificationUriComplete = verificationUriComplete,
+            expiresInSeconds = data.optLong("expires_in", 600L).coerceAtLeast(60L),
+            intervalSeconds = data.optLong("interval", 5L).coerceAtLeast(2L),
+        )
+    }
+
+    fun pollKimiDeviceAuthorization(context: Context, deviceCode: String): KimiDevicePollResult {
+        val (status, data) = requestForm(
+            "$KIMI_OAUTH_HOST/api/oauth/token",
+            mapOf(
+                "client_id" to KIMI_CLIENT_ID,
+                "device_code" to deviceCode,
+                "grant_type" to "urn:ietf:params:oauth:grant-type:device_code",
+            ),
+            kimiIdentityHeaders(context),
+        )
+        if (status in 200..299) {
+            val access = data.optString("access_token")
+            val refresh = data.optString("refresh_token")
+            val expiresIn = data.optLong("expires_in", 3600L).coerceAtLeast(60L)
+            return if (access.isNotBlank() && refresh.isNotBlank()) {
+                KimiDevicePollResult.Success(access, refresh, expiresIn)
+            } else {
+                KimiDevicePollResult.Failed("Kimi 授权响应缺少令牌")
+            }
+        }
+        return when (data.optString("error")) {
+            "authorization_pending", "slow_down" -> KimiDevicePollResult.Pending
+            "expired_token" -> KimiDevicePollResult.Failed("登录二维码已过期，请重试")
+            "access_denied" -> KimiDevicePollResult.Failed("Kimi 授权已被取消")
+            else -> KimiDevicePollResult.Failed(data.optString("error_description").ifBlank { "Kimi 授权失败（HTTP $status）" })
+        }
+    }
+
+    fun connectKimiOAuth(
+        context: Context,
+        id: String,
+        accessToken: String,
+        refreshToken: String,
+        expiresInSeconds: Long,
+    ): BalanceService {
+        val service = requireStored(context, id)
+        check(service.authMode == BalanceAuthMode.KIMI) { "不是 Kimi 服务" }
+        val authenticated = service.copy(
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            expiresAtMillis = System.currentTimeMillis() + expiresInSeconds.coerceAtLeast(60L) * 1_000L,
+            displayKind = BalanceDisplayKind.TOKEN_PLAN,
+        )
+        replace(context, authenticated)
+        return fetchKimi(context, authenticated).also {
+            replace(context, it)
+            notifyChanged(context)
+        }.public()
     }
 
     private fun loginEmailPassword(
@@ -566,7 +921,7 @@ object StandardBalanceRepository {
         sessionToken: CharArray,
     ): BalanceService {
         val cookie = normalizeMimoCookie(String(sessionToken))
-        check(cookie.isNotBlank()) { "没有获取到 MIMO 登录会话" }
+        check(cookie.isNotBlank()) { "没有获取到 Xiaomi MIMO 登录会话" }
         val withCredentials = service.copy(
             sessionToken = cookie,
             accessToken = "",
@@ -597,7 +952,7 @@ object StandardBalanceRepository {
             val latest = requireStored(context, initial.id)
             val authRequired = error is BalanceHttpException && error.statusCode in setOf(401, 403)
             val failed = latest.copy(
-                status = if (authRequired) "MIMO 会话已过期" else "暂时无法更新",
+                status = if (authRequired) "Xiaomi MIMO 会话已过期" else "暂时无法更新",
                 health = if (authRequired) BalanceHealth.AUTH_REQUIRED else if (latest.balance != "--") BalanceHealth.CACHED else BalanceHealth.ERROR,
             )
             replace(context, failed)
@@ -624,7 +979,7 @@ object StandardBalanceRepository {
                 resetAt = "",
                 updatedAt = clock(),
                 lastAttemptAtMillis = System.currentTimeMillis(),
-                status = "MIMO 已连接",
+                status = "Xiaomi MIMO 已连接",
                 health = BalanceHealth.FRESH,
             )
         } else {
@@ -646,7 +1001,7 @@ object StandardBalanceRepository {
                 resetAt = snapshot.expiresAt,
                 updatedAt = clock(),
                 lastAttemptAtMillis = System.currentTimeMillis(),
-                status = "MIMO Token Plan",
+                status = "Xiaomi MIMO Token Plan",
                 health = BalanceHealth.FRESH,
             )
         }
@@ -670,6 +1025,23 @@ object StandardBalanceRepository {
             BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> {
                 if (initial.sessionToken.isBlank()) return initial.public()
                 return refreshMimo(context, initial, force)
+            }
+            BalanceAuthMode.OPENCODE_GO, BalanceAuthMode.KIMI -> {
+                if (initial.accessToken.isBlank()) return initial.public()
+                return refreshBearerPlan(context, initial, force)
+            }
+            BalanceAuthMode.KIMI_BALANCE -> {
+                if (initial.accessToken.isBlank()) return initial.public()
+                return refreshKimiBalance(context, initial, force)
+            }
+            BalanceAuthMode.VOLCENGINE_BALANCE,
+            BalanceAuthMode.VOLCENGINE_CODING_PLAN,
+            BalanceAuthMode.VOLCENGINE_AGENT_PLAN,
+            BalanceAuthMode.OPENCODE_ZEN,
+            BalanceAuthMode.GLM_BALANCE,
+            BalanceAuthMode.GLM_CODING_PLAN -> {
+                if (initial.sessionToken.isBlank()) return initial.public()
+                return refreshConsoleService(context, initial, force)
             }
             BalanceAuthMode.EMAIL_PASSWORD -> Unit
         }
@@ -722,6 +1094,406 @@ object StandardBalanceRepository {
             failed.public()
         }
     }
+
+    private fun refreshBearerPlan(context: Context, initial: StoredBalanceService, force: Boolean): BalanceService {
+        val now = System.currentTimeMillis()
+        if (!force && now - initial.lastAttemptAtMillis < MIN_REFRESH_MILLIS) return initial.public()
+        replace(context, initial.copy(lastAttemptAtMillis = now))
+        return try {
+            val current = requireStored(context, initial.id)
+            val success = when (current.authMode) {
+                BalanceAuthMode.OPENCODE_GO -> fetchOpenCodeGo(current)
+                BalanceAuthMode.KIMI -> {
+                    val ready = if (current.refreshToken.isNotBlank() && current.expiresAtMillis <= now + 60_000L) {
+                        refreshKimiTokens(context, current)
+                    } else {
+                        current
+                    }
+                    try {
+                        fetchKimi(context, ready)
+                    } catch (error: BalanceHttpException) {
+                        if (error.statusCode !in setOf(401, 403) || ready.refreshToken.isBlank()) throw error
+                        fetchKimi(context, refreshKimiTokens(context, ready))
+                    }
+                }
+                BalanceAuthMode.KIMI_BALANCE -> fetchKimiBalance(requireStored(context, initial.id))
+                else -> error("不是 Bearer 配额服务")
+            }
+            replace(context, success)
+            notifyChanged(context)
+            success.public()
+        } catch (error: Exception) {
+            val latest = requireStored(context, initial.id)
+            val authRequired = error is BalanceHttpException && error.statusCode in setOf(401, 403)
+            val failed = latest.copy(
+                status = if (authRequired) "访问凭据已失效" else "暂时无法更新",
+                health = if (authRequired) BalanceHealth.AUTH_REQUIRED else if (latest.balance != "--") BalanceHealth.CACHED else BalanceHealth.ERROR,
+            )
+            replace(context, failed)
+            notifyChanged(context)
+            failed.public()
+        }
+    }
+
+    private fun refreshKimiBalance(context: Context, initial: StoredBalanceService, force: Boolean): BalanceService {
+        val now = System.currentTimeMillis()
+        if (!force && now - initial.lastAttemptAtMillis < MIN_REFRESH_MILLIS) return initial.public()
+        replace(context, initial.copy(lastAttemptAtMillis = now))
+        return try {
+            val success = fetchKimiBalance(requireStored(context, initial.id))
+            replace(context, success)
+            notifyChanged(context)
+            success.public()
+        } catch (error: Exception) {
+            val latest = requireStored(context, initial.id)
+            val authRequired = error is BalanceHttpException && error.statusCode in setOf(401, 403)
+            val failed = latest.copy(
+                status = if (authRequired) "Kimi API Key 已失效" else "暂时无法更新",
+                health = if (authRequired) BalanceHealth.AUTH_REQUIRED else if (latest.balance != "--") BalanceHealth.CACHED else BalanceHealth.ERROR,
+            )
+            replace(context, failed)
+            notifyChanged(context)
+            failed.public()
+        }
+    }
+
+    private fun refreshConsoleService(context: Context, initial: StoredBalanceService, force: Boolean): BalanceService {
+        val now = System.currentTimeMillis()
+        if (!force && now - initial.lastAttemptAtMillis < MIN_REFRESH_MILLIS) return initial.public()
+        replace(context, initial.copy(lastAttemptAtMillis = now))
+        return try {
+            val success = fetchConsoleService(requireStored(context, initial.id))
+            replace(context, success)
+            notifyChanged(context)
+            success.public()
+        } catch (error: Exception) {
+            val latest = requireStored(context, initial.id)
+            val authRequired = error is BalanceHttpException && error.statusCode in setOf(401, 403)
+            val failed = latest.copy(
+                status = if (authRequired) "控制台会话已过期" else "暂时无法更新",
+                health = if (authRequired) BalanceHealth.AUTH_REQUIRED else if (latest.balance != "--") BalanceHealth.CACHED else BalanceHealth.ERROR,
+            )
+            replace(context, failed)
+            notifyChanged(context)
+            failed.public()
+        }
+    }
+
+    private fun fetchConsoleService(service: StoredBalanceService): StoredBalanceService = when (service.authMode) {
+        BalanceAuthMode.VOLCENGINE_BALANCE -> fetchVolcengineBalance(service)
+        BalanceAuthMode.VOLCENGINE_CODING_PLAN -> fetchVolcengineCodingPlan(service)
+        BalanceAuthMode.VOLCENGINE_AGENT_PLAN -> fetchVolcengineAgentPlan(service)
+        BalanceAuthMode.GLM_BALANCE -> fetchGlmBalance(service)
+        BalanceAuthMode.GLM_CODING_PLAN -> fetchGlmCodingPlan(service)
+        BalanceAuthMode.OPENCODE_ZEN -> service.copy(
+            updatedAt = clock(),
+            lastAttemptAtMillis = System.currentTimeMillis(),
+            status = "请重新打开登录页更新 Zen 余额",
+            health = if (service.balance != "--") BalanceHealth.CACHED else BalanceHealth.AUTH_REQUIRED,
+        )
+        else -> error("不是通用控制台服务")
+    }
+
+    private fun fetchVolcengineBalance(service: StoredBalanceService): StoredBalanceService {
+        return service.copy(
+            lastAttemptAtMillis = System.currentTimeMillis(),
+            status = "请重新打开登录页更新账户余额",
+            health = if (service.balance != "--") BalanceHealth.CACHED else BalanceHealth.AUTH_REQUIRED,
+        )
+    }
+
+    private fun fetchVolcengineCodingPlan(service: StoredBalanceService): StoredBalanceService {
+        val response = requestJson(
+            "https://ark.cn-beijing.volces.com/api/plan/GetCodingPlanUsage",
+            "POST",
+            JSONObject(),
+            null,
+            consoleCookieHeaders(service.sessionToken),
+        )
+        val array = findArray(response, "QuotaUsage") ?: error("Coding Plan 响应中没有 QuotaUsage")
+        val labels = mapOf("session" to "5 小时", "weekly" to "周配额", "monthly" to "月配额")
+        val windows = (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val level = item.optString("Level").lowercase()
+            val percent = item.optDouble("Percent", Double.NaN)
+            if (percent.isNaN()) return@mapNotNull null
+            ServiceQuotaWindow(
+                id = level.ifBlank { index.toString() },
+                label = labels[level] ?: level,
+                used = formatPercentNumber(percent),
+                total = "100",
+                resetAt = epochSecondsToIso(item.optLong("ResetTimestamp")),
+            )
+        }
+        check(windows.isNotEmpty()) { "Coding Plan 响应中没有有效配额" }
+        return service.withQuotaWindows(windows, "火山引擎 Coding Plan")
+    }
+
+    private fun fetchVolcengineAgentPlan(service: StoredBalanceService): StoredBalanceService {
+        val response = requestJson(
+            "https://ark.cn-beijing.volces.com/api/plan/GetAgentPlanAFPUsage",
+            "POST",
+            JSONObject(),
+            null,
+            consoleCookieHeaders(service.sessionToken),
+        )
+        val root = findObjectWithAnyKey(response, "AFPFiveHour", "AFPWeekly", "AFPMonthly") ?: response
+        val windows = listOf(
+            "AFPFiveHour" to "5 小时",
+            "AFPWeekly" to "周配额",
+            "AFPMonthly" to "月配额",
+        ).mapNotNull { (key, label) ->
+            root.optJSONObject(key)?.let { item ->
+                ServiceQuotaWindow(
+                    id = key,
+                    label = label,
+                    used = item.optString("Used"),
+                    total = item.optString("Quota"),
+                    resetAt = epochMillisToIso(item.optLong("ResetTime")),
+                )
+            }
+        }.filter { it.total.toBigDecimalOrNull()?.signum() == 1 }
+        check(windows.isNotEmpty()) { "Agent Plan 响应中没有有效配额" }
+        return service.withQuotaWindows(windows, "火山引擎 Agent Plan")
+    }
+
+    private fun fetchGlmBalance(service: StoredBalanceService): StoredBalanceService {
+        val response = requestJson(
+            "https://www.bigmodel.cn/api/biz/account/query-customer-account-report",
+            "GET",
+            null,
+            null,
+            consoleCookieHeaders(service.sessionToken),
+        )
+        val value = findDecimal(response, "availableBalance", "balance") ?: error("GLM 响应中没有账户余额")
+        return service.copy(
+            balance = formatBalance(value),
+            currency = "CNY",
+            detail = "GLM 账户可用余额",
+            updatedAt = clock(),
+            lastAttemptAtMillis = System.currentTimeMillis(),
+            status = "GLM 已连接",
+            health = BalanceHealth.FRESH,
+        )
+    }
+
+    private fun fetchGlmCodingPlan(service: StoredBalanceService): StoredBalanceService {
+        val response = requestJson(
+            "https://www.bigmodel.cn/api/monitor/usage/quota/limit",
+            "GET",
+            null,
+            null,
+            consoleCookieHeaders(service.sessionToken),
+        )
+        val limits = findArray(response, "limits") ?: error("GLM 响应中没有 limits")
+        val windows = (0 until limits.length()).mapNotNull { index ->
+            val item = limits.optJSONObject(index) ?: return@mapNotNull null
+            if (item.optString("type") != "TOKENS_LIMIT") return@mapNotNull null
+            val unit = item.optInt("unit")
+            val label = when (unit) { 3 -> "5 小时"; 6 -> "周配额"; else -> "配额" }
+            val current = item.optString("currentValue").ifBlank { item.optString("usage") }
+            val total = item.optString("usage").takeIf { value -> value.toBigDecimalOrNull()?.signum() == 1 }
+                ?: item.optDouble("percentage", Double.NaN).takeUnless { it.isNaN() }?.let { "100" }
+                ?: return@mapNotNull null
+            val used = if (total == "100") formatPercentNumber(item.optDouble("percentage")) else current
+            ServiceQuotaWindow(index.toString(), label, used, total, item.optString("nextResetTime"))
+        }
+        check(windows.isNotEmpty()) { "GLM 响应中没有有效配额" }
+        return service.withQuotaWindows(windows, "GLM Coding Plan")
+    }
+
+    private fun consoleCookieHeaders(cookie: String): Map<String, String> {
+        val csrf = cookie.split(';').map(String::trim).firstOrNull { it.startsWith("csrfToken=") }
+            ?.substringAfter('=')
+        return buildMap {
+            put("Cookie", cookie)
+            put("Accept", "application/json")
+            if (!csrf.isNullOrBlank()) put("X-Csrf-Token", csrf)
+        }
+    }
+
+    private fun findDecimal(root: Any?, vararg keys: String): java.math.BigDecimal? {
+        when (root) {
+            is JSONObject -> {
+                keys.forEach { key -> root.opt(key)?.toString()?.toBigDecimalOrNull()?.let { return it } }
+                val names = root.keys()
+                while (names.hasNext()) findDecimal(root.opt(names.next()), *keys)?.let { return it }
+            }
+            is JSONArray -> for (index in 0 until root.length()) findDecimal(root.opt(index), *keys)?.let { return it }
+        }
+        return null
+    }
+
+    private fun findArray(root: Any?, key: String): JSONArray? {
+        when (root) {
+            is JSONObject -> {
+                root.optJSONArray(key)?.let { return it }
+                val names = root.keys()
+                while (names.hasNext()) findArray(root.opt(names.next()), key)?.let { return it }
+            }
+            is JSONArray -> for (index in 0 until root.length()) findArray(root.opt(index), key)?.let { return it }
+        }
+        return null
+    }
+
+    private fun findObjectWithAnyKey(root: Any?, vararg keys: String): JSONObject? {
+        when (root) {
+            is JSONObject -> {
+                if (keys.any(root::has)) return root
+                val names = root.keys()
+                while (names.hasNext()) findObjectWithAnyKey(root.opt(names.next()), *keys)?.let { return it }
+            }
+            is JSONArray -> for (index in 0 until root.length()) findObjectWithAnyKey(root.opt(index), *keys)?.let { return it }
+        }
+        return null
+    }
+
+    private fun epochSecondsToIso(value: Long): String = if (value > 0) Instant.ofEpochSecond(value).toString() else ""
+    private fun epochMillisToIso(value: Long): String = if (value > 0) Instant.ofEpochMilli(value).toString() else ""
+
+    private fun fetchOpenCodeGo(service: StoredBalanceService): StoredBalanceService {
+        val root = requestJson(join(service.endpoint, "/zen/go/v1/usage"), "GET", null, service.accessToken)
+        val usage = root.optJSONObject("usage") ?: root
+        val windows = listOf(
+            "rolling" to "5 小时",
+            "weekly" to "周配额",
+            "monthly" to "月配额",
+        ).mapNotNull { (key, label) ->
+            usage.optJSONObject(key)?.let { item ->
+                ServiceQuotaWindow(
+                    id = key,
+                    label = label,
+                    used = item.optDouble("percent", Double.NaN).takeUnless(Double::isNaN)?.let(::formatPercentNumber) ?: return@let null,
+                    total = "100",
+                    resetAt = item.optString("resetsAt"),
+                )
+            }
+        }
+        check(windows.isNotEmpty()) { "OpenCode Go 响应中没有 usage 窗口" }
+        return service.withQuotaWindows(windows, "OpenCode Go")
+    }
+
+    private fun fetchKimi(context: Context, service: StoredBalanceService): StoredBalanceService {
+        val root = requestJson(
+            join(service.endpoint, "/usages"),
+            "GET",
+            null,
+            service.accessToken,
+            kimiIdentityHeaders(context),
+        )
+        val windows = buildList {
+            root.optJSONObject("usage")?.let { usage ->
+                add(
+                    ServiceQuotaWindow(
+                        id = "weekly",
+                        label = "周配额",
+                        used = usage.optString("used"),
+                        total = usage.optString("limit"),
+                        resetAt = usage.optString("resetTime"),
+                    ),
+                )
+            }
+            root.optJSONArray("limits")?.let { limits ->
+                for (index in 0 until limits.length()) {
+                    val item = limits.optJSONObject(index) ?: continue
+                    val window = item.optJSONObject("window")
+                    val detail = item.optJSONObject("detail") ?: continue
+                    val duration = window?.optLong("duration") ?: 0L
+                    val label = item.optString("name").ifBlank {
+                        if (duration == 300L) "5 小时" else "${duration} 分钟"
+                    }
+                    add(
+                        ServiceQuotaWindow(
+                            id = "limit-$index",
+                            label = label,
+                            used = detail.optString("used"),
+                            total = detail.optString("limit"),
+                            resetAt = detail.optString("resetTime"),
+                        ),
+                    )
+                }
+            }
+        }.filter { it.total.toBigDecimalOrNull()?.signum() == 1 }
+        check(windows.isNotEmpty()) { "Kimi 响应中没有 usage 窗口" }
+        return service.withQuotaWindows(windows, "Kimi")
+    }
+
+    /** Kimi API 官方账户余额：GET /v1/users/me/balance。金额单位为人民币。 */
+    private fun fetchKimiBalance(service: StoredBalanceService): StoredBalanceService {
+        val root = requestJson(
+            join(service.endpoint, "/users/me/balance"),
+            "GET",
+            null,
+            service.accessToken,
+        )
+        val available = findDecimal(root, "available_balance", "availableBalance")
+            ?: error("Kimi 响应中没有 available_balance")
+        val cash = findDecimal(root, "cash_balance", "cashBalance")
+        val voucher = findDecimal(root, "voucher_balance", "voucherBalance")
+        return service.copy(
+            balance = formatBalance(available),
+            currency = "CNY",
+            detail = buildList {
+                cash?.let { add("现金 ¥${formatBalance(it)}") }
+                voucher?.let { add("代金券 ¥${formatBalance(it)}") }
+            }.joinToString(" · "),
+            displayKind = BalanceDisplayKind.AMOUNT,
+            updatedAt = clock(),
+            lastAttemptAtMillis = System.currentTimeMillis(),
+            status = "Kimi 已连接",
+            health = BalanceHealth.FRESH,
+        )
+    }
+
+    private fun refreshKimiTokens(context: Context, service: StoredBalanceService): StoredBalanceService {
+        val (status, data) = requestForm(
+            "$KIMI_OAUTH_HOST/api/oauth/token",
+            mapOf(
+                "client_id" to KIMI_CLIENT_ID,
+                "grant_type" to "refresh_token",
+                "refresh_token" to service.refreshToken,
+            ),
+            kimiIdentityHeaders(context),
+        )
+        if (status !in 200..299) throw BalanceHttpException(status, data.optString("error_description").ifBlank { "Kimi 令牌刷新失败" })
+        val access = data.optString("access_token")
+        val refresh = data.optString("refresh_token").ifBlank { service.refreshToken }
+        check(access.isNotBlank() && refresh.isNotBlank()) { "Kimi 令牌刷新响应不完整" }
+        return service.copy(
+            accessToken = access,
+            refreshToken = refresh,
+            expiresAtMillis = System.currentTimeMillis() + data.optLong("expires_in", 3600L).coerceAtLeast(60L) * 1_000L,
+        ).also { replace(context, it) }
+    }
+
+    private fun StoredBalanceService.withQuotaWindows(windows: List<ServiceQuotaWindow>, statusText: String): StoredBalanceService {
+        val primary = windows.first()
+        val usedValue = primary.used.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
+        val totalValue = primary.total.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
+        return copy(
+            balance = formatBalance(totalValue.subtract(usedValue).coerceAtLeast(java.math.BigDecimal.ZERO)),
+            currency = "QUOTA",
+            detail = windows.joinToString(" · ") { window -> "${window.label} ${formatQuotaPercent(window)}" },
+            displayKind = BalanceDisplayKind.TOKEN_PLAN,
+            used = primary.used,
+            total = primary.total,
+            resetAt = primary.resetAt,
+            quotaWindows = windows,
+            updatedAt = clock(),
+            lastAttemptAtMillis = System.currentTimeMillis(),
+            status = statusText,
+            health = BalanceHealth.FRESH,
+        )
+    }
+
+    private fun formatQuotaPercent(window: ServiceQuotaWindow): String {
+        val usedValue = window.used.toBigDecimalOrNull() ?: return "--"
+        val totalValue = window.total.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: return "--"
+        return "${usedValue.multiply(java.math.BigDecimal(100)).divide(totalValue, 1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()}%"
+    }
+
+    private fun formatPercentNumber(value: Double): String =
+        java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
 
     fun refreshAll(context: Context, force: Boolean = false) {
         list(context).forEach { runCatching { refresh(context, it.id, force) } }
@@ -909,6 +1681,50 @@ object StandardBalanceRepository {
         }
         return JSONObject(raw)
     }
+
+    private fun requestForm(
+        url: String,
+        params: Map<String, String>,
+        headers: Map<String, String>,
+    ): Pair<Int, JSONObject> {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 15_000
+        connection.doOutput = true
+        connection.setRequestProperty("Accept", "application/json")
+        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+        headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+        val body = params.entries.joinToString("&") { (key, value) ->
+            "${URLEncoder.encode(key, Charsets.UTF_8.name())}=${URLEncoder.encode(value, Charsets.UTF_8.name())}"
+        }
+        connection.outputStream.use { it.write(body.toByteArray()) }
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        return code to runCatching { JSONObject(raw) }.getOrElse { JSONObject() }
+    }
+
+    private fun kimiIdentityHeaders(context: Context): Map<String, String> {
+        val prefs = context.getSharedPreferences("kimi_device_identity", Context.MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null) ?: UUID.randomUUID().toString().also { generated ->
+            prefs.edit { putString("device_id", generated) }
+        }
+        val version = runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull().orEmpty().ifBlank { "1.0" }
+        return mapOf(
+            "User-Agent" to "OuterView-Quota/$version (Android)",
+            "X-Msh-Platform" to "outerview_android",
+            "X-Msh-Version" to version,
+            "X-Msh-Device-Name" to Build.DEVICE.asciiHeader(),
+            "X-Msh-Device-Model" to Build.MODEL.asciiHeader(),
+            "X-Msh-Os-Version" to Build.VERSION.RELEASE.asciiHeader(),
+            "X-Msh-Device-Id" to deviceId,
+        )
+    }
+
+    private fun String.asciiHeader(): String = replace(Regex("[^\\x20-\\x7E]"), "").trim().ifBlank { "unknown" }
 
     private fun unwrap(payload: JSONObject): JSONObject {
         val code = payload.optInt("code", 0)
@@ -1118,11 +1934,11 @@ object StandardBalanceRepository {
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    private fun stored(context: Context): List<StoredBalanceService> = synchronized(lock) {
+    private fun stored(context: Context, decryptSecrets: Boolean = true): List<StoredBalanceService> = synchronized(lock) {
         val raw = prefs(context).getString(SERVICES, "[]").orEmpty()
         runCatching {
             val json = JSONArray(raw)
-            (0 until json.length()).map { StoredBalanceService.from(json.getJSONObject(it)) }
+            (0 until json.length()).map { StoredBalanceService.from(json.getJSONObject(it), decryptSecrets) }
         }.getOrDefault(emptyList())
     }
 
@@ -1167,7 +1983,7 @@ internal fun readMimoPayAsYouGo(payload: JSONObject): MimoPayAsYouGoSnapshot {
     val data = payload.optJSONObject("data") ?: payload
     val cash = listOf("balance", "cashBalance", "cash_balance", "availableBalance", "available_balance")
         .asSequence().mapNotNull { amountDecimalValue(data.opt(it)) }.firstOrNull()
-        ?: error("MIMO 响应中没有余额")
+        ?: error("Xiaomi MIMO 响应中没有余额")
     val gift = listOf("giftBalance", "gift_balance", "赠送余额")
         .asSequence().mapNotNull { amountDecimalValue(data.opt(it)) }.firstOrNull()
     return MimoPayAsYouGoSnapshot(cash, gift)
@@ -1177,7 +1993,7 @@ internal fun readMimoTokenPlan(detailPayload: JSONObject, usagePayload: JSONObje
     val detail = detailPayload.optJSONObject("data") ?: detailPayload
     val usage = usagePayload.optJSONObject("data") ?: usagePayload
     val pair = findTokenUsagePair(usage) ?: findTokenUsagePair(detail)
-        ?: error("MIMO Token Plan 响应中没有用量")
+        ?: error("Xiaomi MIMO Token Plan 响应中没有用量")
     val plan = listOf("planName", "plan_name", "name", "planCode", "plan_code")
         .asSequence().map { detail.optString(it).trim() }.firstOrNull { it.isNotBlank() } ?: "Token Plan"
     val expires = listOf("expireTime", "expire_time", "validUntil", "valid_until", "endTime", "end_time")
@@ -1221,7 +2037,12 @@ internal fun balanceDisplayValue(service: BalanceService): String {
         val total = service.total.toBigDecimalOrNull() ?: return "--"
         val remaining = service.balance.toBigDecimalOrNull() ?: return "--"
         if (total.signum() <= 0) return "--"
-        return "${remaining.divide(total, 4, java.math.RoundingMode.HALF_UP).multiply(java.math.BigDecimal(100)).setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()}%"
+        val used = service.used.toBigDecimalOrNull() ?: total.subtract(remaining)
+        val presented = when (service.tokenPlanDisplay) {
+            TokenPlanDisplay.USED -> used.max(java.math.BigDecimal.ZERO)
+            TokenPlanDisplay.REMAINING -> remaining.max(java.math.BigDecimal.ZERO)
+        }
+        return "${presented.divide(total, 4, java.math.RoundingMode.HALF_UP).multiply(java.math.BigDecimal(100)).setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()}%"
     }
     val amount = runCatching {
         java.math.BigDecimal(service.balance).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()

@@ -14,7 +14,7 @@ android {
         applicationId = "org.orynnx.codexquota"
         minSdk = 29
         targetSdk = 37
-        versionCode = 9
+        versionCode = 10
         versionName = "0.9.0"
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -33,6 +33,12 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.miuix.ui)
+    implementation(libs.miuix.preference)
+    implementation(libs.miuix.icons)
+    implementation(libs.miuix.blur)
+    implementation(libs.material.components)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.core.ktx)
     testImplementation(libs.junit)

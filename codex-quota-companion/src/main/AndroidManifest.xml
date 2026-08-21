@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -8,7 +9,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:allowBackup="false"
+        android:alwaysRetainTaskState="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -16,14 +19,21 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         tools:ignore="MonochromeLauncherIcon">
-        <!-- Harmless to standard launchers; lets MIUI invalidate its widget cache when the component changes. -->
-        <meta-data android:name="miuiWidgetVersion" android:value="1" />
+        <meta-data
+            android:name="miuiWidgetVersion"
+            android:value="2" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity android:name=".WidgetSettingsActivity" android:exported="false" />
+        <activity android:name=".WidgetUiSettingsActivity" android:exported="false" />
+        <activity android:name=".ThemeSettingsActivity" android:exported="false" />
+        <activity android:name=".ServiceConfigurationActivity" android:exported="false" />
+        <activity android:name=".CodexLoginActivity" android:exported="false" />
         <activity
             android:name=".SiliconFlowLoginActivity"
             android:exported="false"
@@ -32,13 +42,25 @@
             android:name=".MimoLoginActivity"
             android:exported="false"
             android:label="MIMO 登录" />
+        <activity
+            android:name=".ConsoleLoginActivity"
+            android:exported="false"
+            android:label="平台登录" />
+        <activity
+            android:name=".KimiLoginActivity"
+            android:exported="false"
+            android:label="Kimi 登录" />
         <!-- Deliberately exported: Xiaomi's separate rear-display MAML process reads display-only fields. -->
         <provider
             android:name=".QuotaProvider"
             android:authorities="org.orynnx.codexquota"
             android:exported="true"
             tools:ignore="ExportedContentProvider" />
-        <service android:name=".QuotaRefreshJobService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
+        <service
+            android:name=".QuotaRefreshJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:process=":widgetProvider" />
         <service
             android:name=".QuotaForegroundService"
             android:exported="false"
@@ -49,7 +71,7 @@
         </service>
         <receiver
             android:name=".QuotaAppWidgetProvider"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -57,6 +79,28 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/quota_appwidget_info" />
+        </receiver>
+        <receiver
+            android:name=".XiaomiQuotaWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_name_xiaomi"
+            android:process=":widgetProvider">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="miui.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quota_appwidget_info" />
+            <meta-data
+                android:name="miuiWidget"
+                android:value="true" />
+            <meta-data
+                android:name="miuiWidgetRefresh"
+                android:value="exposure" />
+            <meta-data
+                android:name="miuiWidgetRefreshMinInterval"
+                android:value="20000" />
         </receiver>
         <receiver android:name=".QuotaRefreshBootReceiver" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>

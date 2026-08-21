@@ -6,15 +6,17 @@
 | --- | --- | --- | --- |
 | Assistant 卡片 | OuterView 的 Assistant 页面 | 避让背屏镜头、系统时间与手势区；快速扫读配额 | 初始化、背屏恢复、每分钟、根层透明触摸目标 |
 | Rear Wallpaper | OuterView 的 Wallpaper 页面 | 全画布环境化时钟；配额作为次级信息 | 初始化、背屏恢复、每分钟、根层透明触摸目标 |
-| Launcher 小组件 | Android 正面主屏幕 | 48dp 触控、日夜主题、可变宽度、点击进入 App | 手动按钮、系统挂载、App/Job/前台服务刷新后推送 |
-| Xiaomi MAML 小组件 | 小米桌面 MAML 宿主 | 显示设置中选定的余额服务，按设置顺序最多三项 | 初始化、恢复、每分钟、根层透明触摸目标 |
+| Android 原生小组件 | Android/各厂商原生小组件入口 | 2x2/2x3/2x4 自适应布局、主副服务选择、日夜资源 | `QuotaAppWidgetProvider`，系统挂载、手动刷新和后台任务 |
+| Xiaomi HyperOS 小组件 | 小米桌面小部件中心/负一屏 | 与原生组件分开的 Xiaomi Widget 标识、独立 `:widgetProvider` 进程和曝光刷新 | `XiaomiQuotaWidgetProvider`，接收 `miui.appwidget.action.APPWIDGET_UPDATE` |
+| 背屏 MAML 小组件 | 小米桌面/背屏 MAML 宿主 | MAML 内容包和 ContentProvider 数据绑定 | `demo/codex-quota-maml-widget`，独立打包导入 |
 
 ## 使用
 
 1. 安装并打开 `codex-quota-companion-debug.apk`，完成 OpenAI OAuth 授权。
 2. Assistant：导入 `demo/codex-quota-rear-card/Codex-Quota-Rear-Card.zip`。
 3. Wallpaper：导入 `demo/codex-quota-rear-wallpaper/OuterView-Codex-Quota-Wallpaper.mrc`。
-4. Xiaomi MAML：构建并导入 `demo/codex-quota-maml-widget/OuterView-Balance-MAML-Widget.zip` 到支持 MAML 的桌面组件宿主。
+4. 背屏 MAML：构建并导入 `demo/codex-quota-maml-widget/OuterView-Balance-MAML-Widget.mtz` 到支持 MAML 的宿主；它不是 HyperOS 小部件中心的注册方式。
+5. Xiaomi HyperOS 小部件：APK 中的 `XiaomiQuotaWidgetProvider` 按小米技术规范使用 `:widgetProvider`、`miuiWidget=true` 和曝光刷新广播。要出现在小米小部件中心，还需通过小米小部件开放平台提交应用商店版本并审核；本地 ADB 安装只能验证 provider 注册和运行，不能替代平台收录。
 5. Launcher：在 Companion 的“设置 > 主屏幕”点击“添加配额小组件”；若 Launcher 不支持应用内固定，长按桌面并从小组件列表选择 `OuterView Quota`。
 
 Launcher 小组件的 2×2 紧凑形态只显示一个主窗口，并把“最后更新 HH:mm”放在状态行内；横向扩展后，只有 OpenAI 实际返回 5-hour 窗口时才显示第二窗口。Weekly-only 不保留空占位。中尺寸使用对称 12dp 外边距，紧凑尺寸保持 8dp 外边距和 48dp 刷新触控区。

@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description"
-    android:initialLayout="@layout/widget_quota_small"
-    android:minWidth="120dp"
+    android:configure="org.orynnx.codexquota.QuotaWideWidgetConfigurationActivity"
+    android:initialLayout="@layout/widget_quota_medium"
+    android:minWidth="300dp"
     android:minHeight="110dp"
-    android:minResizeWidth="120dp"
-    android:minResizeHeight="110dp"
     android:previewImage="@drawable/widget_preview"
-    android:resizeMode="horizontal"
+    android:resizeMode="none"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />

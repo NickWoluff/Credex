@@ -1,13 +1,9 @@
 package org.orynnx.codexquota
 
-import android.app.Activity
-import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
-import android.view.ViewGroup
-import android.view.WindowInsets
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
@@ -15,14 +11,9 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
 
 /** MIMO console login. Only the runtime cookie header is returned to the caller. */
-class MimoLoginActivity : Activity() {
-    private lateinit var webView: WebView
-    private lateinit var status: TextView
+class MimoLoginActivity : LoginSurfaceActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var cookieHeader = ""
     private var completed = false
@@ -31,35 +22,7 @@ class MimoLoginActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
-        window.statusBarColor = Color.WHITE
-        window.navigationBarColor = Color.WHITE
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-        val basePadding = intArrayOf(root.paddingLeft, root.paddingTop, root.paddingRight, root.paddingBottom)
-        root.setOnApplyWindowInsetsListener { view, insets ->
-            val bars = insets.getInsets(WindowInsets.Type.systemBars())
-            view.setPadding(
-                basePadding[0] + bars.left,
-                basePadding[1] + bars.top,
-                basePadding[2] + bars.right,
-                basePadding[3] + bars.bottom,
-            )
-            insets
-        }
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(20, 12, 12, 12) }
-        header.addView(Button(this).apply { text = "返回"; setOnClickListener { finish() } })
-        status = TextView(this).apply {
-            text = "请在下方登录 MIMO，登录完成后会自动返回"
-            setTextColor(Color.DKGRAY)
-            setPadding(16, 0, 0, 0)
-        }
-        header.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        header.addView(Button(this).apply {
-            text = "重试"
-            setOnClickListener { loadLoginPage(forceReload = true) }
-        })
-        root.addView(header)
-
+        loginStatus = "请在页面内登录 Xiaomi MIMO，成功后会自动返回"
         webView = WebView(this)
         webView.settings.apply {
             javaScriptEnabled = true
@@ -100,16 +63,21 @@ class MimoLoginActivity : Activity() {
                 return true
             }
         }
-        root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        setContentView(root)
-        root.requestApplyInsets()
+        showLoginSurface(
+            title = "Xiaomi MIMO",
+            primaryAction = LoginTopAction.RETRY,
+            onPrimaryAction = { loadLoginPage(forceReload = true) },
+            externalUrl = { webView.url ?: BALANCE_URL },
+        )
         loadLoginPage(forceReload = false)
     }
 
     override fun onDestroy() {
         cancelLoadTimeout()
-        webView.stopLoading()
-        webView.destroy()
+        runCatching {
+            webView.stopLoading()
+            webView.destroy()
+        }
         super.onDestroy()
     }
 
@@ -122,7 +90,7 @@ class MimoLoginActivity : Activity() {
         }
         cancelLoadTimeout()
         webView.visibility = View.VISIBLE
-        status.text = "正在打开 MIMO 控制台…"
+        loginStatus = "正在打开 Xiaomi MIMO 控制台…"
         // Let the console create its signed Xiaomi Account redirect when sign-in is required.
         // The STS endpoint cannot be opened directly because its signature is per-request.
         webView.loadUrl(BALANCE_URL)
@@ -154,10 +122,10 @@ class MimoLoginActivity : Activity() {
         cancelLoadTimeout()
         webView.stopLoading()
         webView.visibility = View.GONE
-        status.text = if (retryable) {
-            "MIMO 页面加载失败，请点击“重试”"
+        loginStatus = if (retryable) {
+            "Xiaomi MIMO 页面加载失败，请点击重新加载"
         } else {
-            "MIMO 页面加载失败"
+            "Xiaomi MIMO 页面加载失败"
         }
     }
 
@@ -175,7 +143,7 @@ class MimoLoginActivity : Activity() {
         if (!HOST.equals(uri.host, ignoreCase = true) || !uri.path.orEmpty().startsWith("/console")) return
         completed = true
         CookieManager.getInstance().flush()
-        status.text = "已获取登录状态，正在返回应用…"
+        loginStatus = "已获取登录状态，正在返回应用…"
         window.decorView.postDelayed({
             setResult(RESULT_OK, intent.putExtra(EXTRA_SESSION_TOKEN, cookieHeader))
             finish()

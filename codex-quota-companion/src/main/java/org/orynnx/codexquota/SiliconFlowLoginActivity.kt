@@ -1,9 +1,6 @@
 package org.orynnx.codexquota
 
-import android.app.Activity
-import android.graphics.Color
 import android.os.Bundle
-import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -11,9 +8,6 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
 
 /**
  * Login surface for SiliconFlow's web wallet.
@@ -22,9 +16,7 @@ import android.widget.TextView
  * issue its own wallet request, captures the request's subject id, and reads
  * only the session cookie needed by the balance adapter.
  */
-class SiliconFlowLoginActivity : Activity() {
-    private lateinit var webView: WebView
-    private lateinit var status: TextView
+class SiliconFlowLoginActivity : LoginSurfaceActivity() {
     private var subjectId = ""
     private var sessionToken = ""
     private var completed = false
@@ -33,31 +25,7 @@ class SiliconFlowLoginActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
-        }
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(20, 12, 12, 12)
-        }
-        val back = Button(this).apply {
-            text = "返回"
-            setOnClickListener { finish() }
-        }
-        val openConsole = Button(this).apply {
-            text = "进入控制台"
-            setOnClickListener { webView.loadUrl(SILICONFLOW_CONSOLE_URL) }
-        }
-        status = TextView(this).apply {
-            text = "请在下方登录 SiliconFlow，登录完成后会自动返回"
-            setTextColor(Color.DKGRAY)
-            setPadding(16, 0, 0, 0)
-        }
-        header.addView(back, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        header.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        header.addView(openConsole, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        root.addView(header)
+        loginStatus = "请在页面内登录 SiliconFlow，成功后会自动返回"
 
         webView = WebView(this)
         webView.settings.apply {
@@ -82,14 +50,20 @@ class SiliconFlowLoginActivity : Activity() {
                 openWalletPageIfNeeded(url)
             }
         }
-        root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        setContentView(root)
+        showLoginSurface(
+            title = "SiliconFlow",
+            primaryAction = LoginTopAction.OPEN_CONSOLE,
+            onPrimaryAction = { webView.loadUrl(SILICONFLOW_CONSOLE_URL) },
+            externalUrl = { webView.url ?: SILICONFLOW_URL },
+        )
         webView.loadUrl(SILICONFLOW_URL)
     }
 
     override fun onDestroy() {
-        webView.stopLoading()
-        webView.destroy()
+        runCatching {
+            webView.stopLoading()
+            webView.destroy()
+        }
         super.onDestroy()
     }
 
@@ -115,7 +89,7 @@ class SiliconFlowLoginActivity : Activity() {
         val path = uri.path.orEmpty()
         if (path.startsWith("/me/") || path.startsWith("/dashboard")) return
         walletPageRequested = true
-        status.text = "登录成功，正在打开控制台…"
+        loginStatus = "登录成功，正在打开控制台…"
         webView.post { webView.loadUrl(SILICONFLOW_CONSOLE_URL) }
     }
 
@@ -174,7 +148,7 @@ class SiliconFlowLoginActivity : Activity() {
         completed = true
         CookieManager.getInstance().flush()
         runOnUiThread {
-            status.text = "已获取登录状态，正在返回应用…"
+            loginStatus = "已获取登录状态，正在返回应用…"
             window.decorView.postDelayed({
                 setResult(
                     RESULT_OK,

@@ -27,7 +27,7 @@ class MimoBalanceTest {
     }
 
     @Test
-    fun tokenPlanDisplaysRemainingPercent() {
+    fun tokenPlanDisplaysUsedPercentByDefaultAndRemainingWhenConfigured() {
         val service = BalanceService(
             id = "test",
             name = "MIMO Token Plan",
@@ -39,7 +39,8 @@ class MimoBalanceTest {
             used = "25",
             total = "100",
         )
-        assertEquals("75%", balanceDisplayValue(service))
+        assertEquals("25%", balanceDisplayValue(service))
+        assertEquals("75%", balanceDisplayValue(service.copy(tokenPlanDisplay = TokenPlanDisplay.REMAINING)))
     }
 
     @Test
