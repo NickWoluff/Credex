@@ -32,6 +32,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -75,8 +76,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuGroup
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenuPopup
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
@@ -110,16 +112,20 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -137,6 +143,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -217,6 +224,76 @@ private data class PageDataSnapshot(
     val notificationSyncEnabled: Boolean? = null,
     val serviceRunning: Boolean? = null,
 )
+
+private const val BOUNDARY_HAPTIC_THRESHOLD = 1f
+
+@Composable
+private fun Modifier.verticalBoundaryHaptics(
+    canScrollBackward: () -> Boolean,
+    canScrollForward: () -> Boolean,
+): Modifier {
+    val hapticFeedback = LocalHapticFeedback.current
+    val currentCanScrollBackward by rememberUpdatedState(canScrollBackward)
+    val currentCanScrollForward by rememberUpdatedState(canScrollForward)
+    val connection = remember(hapticFeedback) {
+        object : NestedScrollConnection {
+            private var topTriggered = false
+            private var bottomTriggered = false
+
+            private fun triggerTopBoundary() {
+                if (!topTriggered) {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                    topTriggered = true
+                }
+            }
+
+            private fun triggerBottomBoundary() {
+                if (!bottomTriggered) {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                    bottomTriggered = true
+                }
+            }
+
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y < -BOUNDARY_HAPTIC_THRESHOLD) topTriggered = false
+                if (available.y > BOUNDARY_HAPTIC_THRESHOLD) bottomTriggered = false
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    when {
+                        available.y > BOUNDARY_HAPTIC_THRESHOLD && !currentCanScrollBackward() -> triggerTopBoundary()
+                        available.y < -BOUNDARY_HAPTIC_THRESHOLD && !currentCanScrollForward() -> triggerBottomBoundary()
+                    }
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                when {
+                    available.y > BOUNDARY_HAPTIC_THRESHOLD && !currentCanScrollBackward() -> triggerTopBoundary()
+                    available.y < -BOUNDARY_HAPTIC_THRESHOLD && !currentCanScrollForward() -> triggerBottomBoundary()
+                }
+                topTriggered = false
+                bottomTriggered = false
+                return Velocity.Zero
+            }
+        }
+    }
+    return nestedScroll(connection)
+}
+
+@Composable
+private fun Modifier.appVerticalScroll(state: ScrollState = rememberScrollState()): Modifier =
+    verticalBoundaryHaptics(
+        canScrollBackward = { state.canScrollBackward },
+        canScrollForward = { state.canScrollForward },
+    ).verticalScroll(state)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 open class MainActivity : ComponentActivity() {
@@ -1105,6 +1182,13 @@ open class MainActivity : ComponentActivity() {
                 onCheckedChange = onCheckedChange,
             )
         } else {
+            val hapticFeedback = LocalHapticFeedback.current
+            val materialOnCheckedChange: (Boolean) -> Unit = { enabled ->
+                hapticFeedback.performHapticFeedback(
+                    if (enabled) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff,
+                )
+                onCheckedChange(enabled)
+            }
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.extraSmall,
@@ -1122,7 +1206,7 @@ open class MainActivity : ComponentActivity() {
                         Text(title, style = MaterialTheme.typography.titleMedium)
                         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Switch(checked = checked, onCheckedChange = onCheckedChange)
+                    Switch(checked = checked, onCheckedChange = materialOnCheckedChange)
                 }
             }
         }
@@ -1253,7 +1337,12 @@ open class MainActivity : ComponentActivity() {
         }
 
         LazyColumn(
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier
+                .fillMaxSize()
+                .verticalBoundaryHaptics(
+                    canScrollBackward = { listState.canScrollBackward },
+                    canScrollForward = { listState.canScrollForward },
+                ),
             state = listState,
             contentPadding = PaddingValues(
                 start = 20.dp,
@@ -1725,7 +1814,7 @@ open class MainActivity : ComponentActivity() {
         Column(
             modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .appVerticalScroll()
                 .padding(start = 20.dp, top = 14.dp, end = 20.dp, bottom = if (uiStyle == UiStyle.MIUIX) 112.dp else 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
@@ -1768,7 +1857,7 @@ open class MainActivity : ComponentActivity() {
     private fun ConfigurationBrandScreen(brand: String, modifier: Modifier = Modifier) {
         if (brand == "OpenAI Codex") {
             Column(
-                modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+                modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 SettingsSection("服务设置") {
@@ -1808,7 +1897,7 @@ open class MainActivity : ComponentActivity() {
         } else {
             val services = balanceServices.filter { brandLabel(it.authMode) == brand }
             Column(
-                modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+                modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 if (services.isEmpty()) {
@@ -1859,7 +1948,7 @@ open class MainActivity : ComponentActivity() {
                     label = "add-service-step",
                 ) { step ->
                     Column(
-                        Modifier.verticalScroll(rememberScrollState()),
+                        Modifier.appVerticalScroll(),
                         verticalArrangement = Arrangement.spacedBy(if (uiStyle == UiStyle.MATERIAL) 3.dp else 8.dp),
                     ) {
                         if (step == null) {
@@ -2163,7 +2252,7 @@ open class MainActivity : ComponentActivity() {
         val notificationsAllowed = Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         val batteryUnrestricted = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
         Column(
-            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             SettingsSection("界面") {
@@ -2288,7 +2377,7 @@ open class MainActivity : ComponentActivity() {
         val secondaryOptions = listOf("" to "不显示") + widgetOptions.filter { it.first != widgetPrimaryId }
         val secondaryIndex = secondaryOptions.indexOfFirst { it.first == widgetSecondaryId }.coerceAtLeast(0)
         Column(
-            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SettingsCard {
@@ -2375,7 +2464,7 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun WidgetUiSettingsScreen(modifier: Modifier = Modifier) {
         Column(
-            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SettingsSection("界面") {
@@ -2453,7 +2542,7 @@ open class MainActivity : ComponentActivity() {
             append(" Orynnx & Nick Woluff. All Rights Reserved.")
         }
         Column(
-            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Column(
@@ -2530,7 +2619,7 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun ProjectsScreen(modifier: Modifier = Modifier) {
         Column(
-            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             SettingsCard {
@@ -2554,7 +2643,7 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun ReferencesScreen(modifier: Modifier = Modifier) {
         Column(
-            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             SettingsTextCard("Credex 使用了以下项目的部分或全部内容，感谢开源项目及其维护者提供的组件与工具支持（排名顺序不分先后）")
@@ -2573,7 +2662,7 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun HelpScreen(modifier: Modifier = Modifier) {
         Column(
-            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             SettingsCard {
@@ -2589,7 +2678,7 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun DisclaimerScreen(modifier: Modifier = Modifier) {
         Column(
-            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             SettingsSection("版权") {
@@ -2657,7 +2746,7 @@ open class MainActivity : ComponentActivity() {
         Column(
             modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .appVerticalScroll()
                 .padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
@@ -2752,6 +2841,7 @@ open class MainActivity : ComponentActivity() {
         selectedIndex: Int,
         onSelected: (Int) -> Unit,
     ) {
+        val hapticFeedback = LocalHapticFeedback.current
         if (uiStyle == UiStyle.MIUIX) {
             MiuixOverlayDropdownPreference(
                 items = items,
@@ -2759,26 +2849,31 @@ open class MainActivity : ComponentActivity() {
                 title = title,
                 summary = subtitle,
                 renderInRootScaffold = true,
-                onSelectedIndexChange = onSelected,
+                onSelectedIndexChange = { index ->
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                    onSelected(index)
+                },
             )
             return
         }
         var expanded by remember { mutableStateOf(false) }
-        var menuOffset by remember { mutableStateOf(DpOffset.Zero) }
+        var menuAnchor by remember { mutableStateOf(DpOffset.Zero) }
         val density = LocalDensity.current
         Box(
             Modifier
                 .fillMaxWidth()
                 .pointerInput(title, items) {
                     detectTapGestures { position ->
-                        menuOffset = with(density) { DpOffset(position.x.toDp(), 0.dp) }
+                        menuAnchor = with(density) { DpOffset(position.x.toDp(), position.y.toDp()) }
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.ContextClick)
                         expanded = true
                     }
                 }
                 .semantics {
                     role = Role.Button
                     onClick {
-                        menuOffset = DpOffset.Zero
+                        menuAnchor = DpOffset.Zero
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.ContextClick)
                         expanded = true
                         true
                     }
@@ -2792,30 +2887,43 @@ open class MainActivity : ComponentActivity() {
                 showChevron = false,
                 trailingText = summary,
             )
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                offset = menuOffset,
-                shape = MenuDefaults.standaloneGroupShape,
-                containerColor = MenuDefaults.groupStandardContainerColor,
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = menuAnchor.x, y = menuAnchor.y)
+                    .size(1.dp),
             ) {
-                items.forEachIndexed { index, item ->
-                    DropdownMenuItem(
-                        selected = index == selectedIndex,
-                        text = { Text(item) },
-                        onClick = {
-                            expanded = false
-                            onSelected(index)
-                        },
-                        shapes = MenuDefaults.itemShape(index, items.size),
-                        selectedLeadingIcon = {
-                            Icon(
-                                Icons.Filled.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                DropdownMenuPopup(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    DropdownMenuGroup(
+                        shapes = MenuDefaults.groupShapes(),
+                        containerColor = MenuDefaults.groupStandardContainerColor,
+                    ) {
+                        items.forEachIndexed { index, item ->
+                            DropdownMenuItem(
+                                selected = index == selectedIndex,
+                                text = { Text(item) },
+                                onClick = {
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                    expanded = false
+                                    onSelected(index)
+                                },
+                                shapes = MenuDefaults.itemShape(index, items.size),
+                                leadingIcon = {
+                                    Spacer(Modifier.size(MenuDefaults.LeadingIconSize))
+                                },
+                                selectedLeadingIcon = {
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                                    )
+                                },
                             )
-                        },
-                    )
+                        }
+                    }
                 }
             }
         }
@@ -3070,6 +3178,13 @@ open class MainActivity : ComponentActivity() {
             }
             return
         }
+        val hapticFeedback = LocalHapticFeedback.current
+        val materialOnCheckedChange: (Boolean) -> Unit = { enabled ->
+            hapticFeedback.performHapticFeedback(
+                if (enabled) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff,
+            )
+            onCheckedChange(enabled)
+        }
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
@@ -3078,7 +3193,7 @@ open class MainActivity : ComponentActivity() {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable { onCheckedChange(!checked) }
+                    .clickable { materialOnCheckedChange(!checked) }
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -3086,7 +3201,7 @@ open class MainActivity : ComponentActivity() {
                     Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Switch(checked = checked, onCheckedChange = onCheckedChange)
+                Switch(checked = checked, onCheckedChange = materialOnCheckedChange)
             }
         }
     }
