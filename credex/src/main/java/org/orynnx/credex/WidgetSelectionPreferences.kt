@@ -9,7 +9,6 @@ internal object WidgetSelectionPreferences {
     private const val PREFS = "quota_widget_selections"
     private const val GLOBAL_PRIMARY = "global_primary"
     private const val GLOBAL_SECONDARY = "global_secondary"
-    private const val GLOBAL_SHOW_SECONDARY = "global_show_secondary"
     private const val LAYOUT_MODE_PREFIX = "layout_mode_"
 
     private enum class LayoutMode { COMPACT, WIDE }
@@ -37,25 +36,20 @@ internal object WidgetSelectionPreferences {
     fun globalSecondary(context: Context): String =
         preferences(context).getString(GLOBAL_SECONDARY, "").orEmpty()
 
-    fun showSecondary(context: Context): Boolean =
-        preferences(context).getBoolean(GLOBAL_SHOW_SECONDARY, true)
-
     fun setGlobal(
         context: Context,
         primaryId: String,
         secondaryId: String,
-        showSecondary: Boolean,
     ) {
         preferences(context).edit {
             putString(GLOBAL_PRIMARY, primaryId)
             putString(GLOBAL_SECONDARY, secondaryId.takeUnless { it == primaryId }.orEmpty())
-            putBoolean(GLOBAL_SHOW_SECONDARY, showSecondary)
         }
     }
 
     fun globalSelection(context: Context, compact: Boolean): List<String> = buildList {
         globalPrimary(context).takeIf { it.isNotBlank() }?.let(::add)
-        if (!compact && showSecondary(context)) {
+        if (!compact) {
             globalSecondary(context).takeIf { it.isNotBlank() && it !in this }?.let(::add)
         }
     }
@@ -106,5 +100,5 @@ internal object WidgetSelectionPreferences {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }
 
-/** 小组件选择器、常驻通知均使用用户为服务配置的原始名称。 */
+/** 小部件选择器、常驻通知均使用用户为服务配置的原始名称。 */
 internal fun widgetServiceLabel(service: BalanceService): String = service.name

@@ -55,7 +55,7 @@ abstract class BaseWidgetConfigurationActivity : Activity() {
             setPadding(0, 12, 0, 12)
         })
         root.addView(TextView(this).apply {
-            text = if (maxSelections == 1) "2×2 小组件固定展示一个服务" else "4×2 小组件最多展示两个服务"
+            text = if (maxSelections == 1) "2×2 小部件固定展示一个服务" else "4×2 小部件最多展示两个服务"
             textSize = 15f
             setTextColor(Color.DKGRAY)
             setPadding(0, 0, 0, 12)

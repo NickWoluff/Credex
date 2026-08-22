@@ -40,8 +40,8 @@ class CodexLoginActivity : LoginSurfaceActivity() {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         showLoginSurface(
             title = "OpenAI Codex",
-            primaryAction = LoginTopAction.COMPLETE,
-            onPrimaryAction = ::completeIfReady,
+            primaryAction = LoginTopAction.RETRY,
+            onPrimaryAction = ::retryAuthorization,
         )
         if (savedInstanceState == null) clearLoginSessionData { beginAuthorization() }
     }
@@ -77,12 +77,11 @@ class CodexLoginActivity : LoginSurfaceActivity() {
         }
     }
 
-    private fun completeIfReady() {
-        if (QuotaRepository.signedIn(this)) {
-            finishWithRefresh()
-        } else {
-            loginStatus = "请先在页面内完成 OpenAI 登录"
-        }
+    private fun retryAuthorization() {
+        CodexOAuth.cancel()
+        pendingSession = null
+        completed = false
+        clearLoginSessionData { beginAuthorization() }
     }
 
     private fun handleAuthorizationResult(result: Result<OAuthTokens>) {

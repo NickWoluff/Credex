@@ -189,6 +189,7 @@ private enum class ActivityPage(val value: String) {
     WIDGET_UI_SETTINGS("widget-ui-settings"),
     THEME_SETTINGS("theme-settings"),
     ABOUT("about"),
+    PROJECTS("projects"),
     REFERENCES("references"),
     HELP("help"),
     DISCLAIMER("disclaimer"),
@@ -229,6 +230,7 @@ open class MainActivity : ComponentActivity() {
     private var showWidgetSettings by mutableStateOf(false)
     private var showWidgetUiSettings by mutableStateOf(false)
     private var showAbout by mutableStateOf(false)
+    private var showProjects by mutableStateOf(false)
     private var showReferences by mutableStateOf(false)
     private var showHelp by mutableStateOf(false)
     private var showDisclaimer by mutableStateOf(false)
@@ -268,7 +270,6 @@ open class MainActivity : ComponentActivity() {
     private var miuixBlur by mutableStateOf(true)
     private var widgetPrimaryId by mutableStateOf(WidgetSelectionPreferences.CODEX_ID)
     private var widgetSecondaryId by mutableStateOf("")
-    private var widgetShowSecondary by mutableStateOf(true)
     private var widgetCollapseTokenValues by mutableStateOf(false)
     private var widgetTokenUnitSystem by mutableStateOf(WidgetTokenUnitSystem.DECIMAL)
     private var widgetHeightInput by mutableStateOf("")
@@ -309,6 +310,7 @@ open class MainActivity : ComponentActivity() {
     }
     private val secondaryPageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         loadVisualState()
+        configureImmersiveNavigation()
         if (activityPage == ActivityPage.ROOT || activityPage == ActivityPage.THEME_SETTINGS) {
             applyPageData(readPageData(activityPage))
             pageContentReady = true
@@ -374,6 +376,7 @@ open class MainActivity : ComponentActivity() {
             ActivityPage.WIDGET_UI_SETTINGS -> showWidgetUiSettings = true
             ActivityPage.THEME_SETTINGS -> showThemeSettings = true
             ActivityPage.ABOUT -> showAbout = true
+            ActivityPage.PROJECTS -> showProjects = true
             ActivityPage.REFERENCES -> showReferences = true
             ActivityPage.HELP -> showHelp = true
             ActivityPage.DISCLAIMER -> showDisclaimer = true
@@ -387,6 +390,7 @@ open class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
+        configureImmersiveNavigation()
         loadVisualState()
         when (activityPage) {
             ActivityPage.ROOT -> {
@@ -395,7 +399,7 @@ open class MainActivity : ComponentActivity() {
             }
             ActivityPage.THEME_SETTINGS -> pageContentReady = true
             ActivityPage.SETTINGS, ActivityPage.WIDGET_SETTINGS, ActivityPage.WIDGET_UI_SETTINGS, ActivityPage.ABOUT,
-            ActivityPage.REFERENCES, ActivityPage.HELP, ActivityPage.DISCLAIMER,
+            ActivityPage.PROJECTS, ActivityPage.REFERENCES, ActivityPage.HELP, ActivityPage.DISCLAIMER,
             ActivityPage.CONFIGURATION -> Unit
         }
         setContent {
@@ -431,6 +435,17 @@ open class MainActivity : ComponentActivity() {
             }
         }
         if (!pageContentReady) loadPageStateAsync()
+    }
+
+    /** Keep HyperOS' gesture handle over the app surface instead of reserving a solid nav bar. */
+    private fun configureImmersiveNavigation() {
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or
+            android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+            android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
     private val mimoLoginLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -559,6 +574,7 @@ open class MainActivity : ComponentActivity() {
         val isWidgetSettings = showWidgetSettings
         val isWidgetUiSettings = showWidgetUiSettings
         val isAbout = showAbout
+        val isProjects = showProjects
         val isReferences = showReferences
         val isHelp = showHelp
         val isDisclaimer = showDisclaimer
@@ -566,11 +582,13 @@ open class MainActivity : ComponentActivity() {
         val isDetail = detailBrand != null
         val isSecondaryPage = isSettings || isThemeSettings || isWidgetSettings || isWidgetUiSettings ||
             isAbout || isReferences || isHelp || isDisclaimer || isDetail
+            || isProjects
         val pageKey = when {
             isWidgetUiSettings -> "widget-ui-settings"
             isWidgetSettings -> "widget-settings"
             isThemeSettings -> "theme-settings"
             isAbout -> "about"
+            isProjects -> "projects"
             isReferences -> "references"
             isHelp -> "help"
             isDisclaimer -> "disclaimer"
@@ -586,6 +604,7 @@ open class MainActivity : ComponentActivity() {
                 isWidgetSettings,
                 isWidgetUiSettings,
                 isAbout,
+                isProjects,
                 isReferences,
                 isHelp,
                 isDisclaimer,
@@ -615,10 +634,11 @@ open class MainActivity : ComponentActivity() {
                     title = {
                         Text(when {
                             isSettings -> "设置"
-                            isWidgetSettings -> "小组件配置"
-                            isWidgetUiSettings -> "自定义小组件 UI"
+                            isWidgetSettings -> "小部件配置"
+                            isWidgetUiSettings -> "自定义小部件卡片"
                             isThemeSettings -> "主题设置"
                             isAbout -> "关于"
+                            isProjects -> "项目地址"
                             isReferences -> "引用"
                             isHelp -> "帮助"
                             isDisclaimer -> "声明"
@@ -677,6 +697,7 @@ open class MainActivity : ComponentActivity() {
                 isWidgetUiSettings -> WidgetUiSettingsScreen(contentModifier)
                 isSettings -> SettingsScreen(contentModifier)
                 isAbout -> AboutScreen(contentModifier)
+                isProjects -> ProjectsScreen(contentModifier)
                 isReferences -> ReferencesScreen(contentModifier)
                 isHelp -> HelpScreen(contentModifier)
                 isDisclaimer -> DisclaimerScreen(contentModifier)
@@ -700,6 +721,7 @@ open class MainActivity : ComponentActivity() {
         isWidgetSettings: Boolean,
         isWidgetUiSettings: Boolean,
         isAbout: Boolean,
+        isProjects: Boolean,
         isReferences: Boolean,
         isHelp: Boolean,
         isDisclaimer: Boolean,
@@ -712,6 +734,7 @@ open class MainActivity : ComponentActivity() {
             isWidgetSettings -> "widget-settings"
             isThemeSettings -> "theme-settings"
             isAbout -> "about"
+            isProjects -> "projects"
             isReferences -> "references"
             isHelp -> "help"
             isDisclaimer -> "disclaimer"
@@ -726,6 +749,7 @@ open class MainActivity : ComponentActivity() {
         val blurAvailable = miuixBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
         val isSecondaryPage = isSettings || isThemeSettings || isWidgetSettings || isWidgetUiSettings ||
             isAbout || isReferences || isHelp || isDisclaimer || isDetail
+            || isProjects
         val barColor = MiuixTheme.colorScheme.surface.copy(alpha = if (blurAvailable) 0.48f else 1f)
         MiuixScaffold(
             topBar = {
@@ -744,10 +768,11 @@ open class MainActivity : ComponentActivity() {
                         color = barColor,
                         title = when {
                             isThemeSettings -> "主题设置"
-                            isWidgetSettings -> "小组件配置"
-                            isWidgetUiSettings -> "自定义小组件 UI"
+                            isWidgetSettings -> "小部件配置"
+                            isWidgetUiSettings -> "自定义小部件卡片"
                             isSettings -> "设置"
                             isAbout -> "关于"
+                            isProjects -> "项目地址"
                             isReferences -> "引用"
                             isHelp -> "帮助"
                             isDisclaimer -> "声明"
@@ -757,9 +782,10 @@ open class MainActivity : ComponentActivity() {
                         },
                         largeTitle = when {
                             isThemeSettings -> "主题设置"
-                            isWidgetSettings -> "小组件配置"
-                            isWidgetUiSettings -> "自定义小组件 UI"
+                            isWidgetSettings -> "小部件配置"
+                            isWidgetUiSettings -> "自定义小部件卡片"
                             isSettings -> "设置"
+                            isProjects -> "项目地址"
                             isAbout -> "关于"
                             isReferences -> "引用"
                             isHelp -> "帮助"
@@ -841,6 +867,7 @@ open class MainActivity : ComponentActivity() {
                     isWidgetUiSettings -> WidgetUiSettingsScreen(contentModifier)
                     isSettings -> SettingsScreen(contentModifier)
                     isAbout -> AboutScreen(contentModifier)
+                    isProjects -> ProjectsScreen(contentModifier)
                     isReferences -> ReferencesScreen(contentModifier)
                     isHelp -> HelpScreen(contentModifier)
                     isDisclaimer -> DisclaimerScreen(contentModifier)
@@ -1234,21 +1261,7 @@ open class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             if (showCodex) {
-                when {
-                    state.hasWeekly -> {
-                        item("codex-weekly") {
-                            QuotaHero("本周剩余", state.weeklyRemaining, state.weeklyReset, state.weeklyResetAtEpoch)
-                        }
-                        if (state.hasFiveHour) item("codex-five-hour") {
-                            QuotaCompact("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
-                        }
-                    }
-                    state.hasFiveHour -> item("codex-five-hour") {
-                        QuotaHero("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
-                    }
-                    else -> item("codex-empty") { EmptyQuotaState() }
-                }
-                if (showHealthStatus) item("codex-health") { SyncHealthRow() }
+                item("codex") { CodexServiceCard() }
             }
 
             if (visibleBalanceServices.isNotEmpty()) {
@@ -1321,6 +1334,90 @@ open class MainActivity : ComponentActivity() {
                 Text("添加服务后，余额和 Token Plan 配额会显示在这里。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 AppNeutralButton(onClick = { showAddServices = true }) { Text("添加服务") }
             }
+        }
+    }
+
+    @Composable
+    private fun CodexServiceCard() {
+        val statusColor = when (state.health) {
+            QuotaHealth.FRESH, QuotaHealth.EMPTY -> QuotaColors.Success
+            QuotaHealth.CACHED -> QuotaColors.Warning
+            QuotaHealth.AUTH_REQUIRED, QuotaHealth.SIGNED_OUT -> QuotaColors.Error
+        }
+        AppCard {
+            Column(
+                Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (showProviderIcons || showHealthStatus) {
+                        Box(Modifier.size(if (showProviderIcons) 25.dp else 7.dp)) {
+                            if (showProviderIcons) PlatformLogo(PlatformBrand.OPENAI_CODEX, 24.dp)
+                            if (showHealthStatus) {
+                                Box(
+                                    Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(7.dp)
+                                        .border(1.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                                        .background(statusColor, CircleShape),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(if (showProviderIcons) 10.dp else 6.dp))
+                    }
+                    Text("OpenAI Codex", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                }
+                Text("OpenAI 配额", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (state.hasWeekly || state.hasFiveHour) {
+                    if (state.hasWeekly) {
+                        CodexWindowRow("本周剩余", state.weeklyRemaining, state.weeklyReset, state.weeklyResetAtEpoch)
+                    }
+                    if (state.hasFiveHour) {
+                        CodexWindowRow("5 小时剩余", state.fiveHourRemaining, state.fiveHourReset, state.fiveHourResetAtEpoch)
+                    }
+                } else {
+                    Text(
+                        if (state.health == QuotaHealth.AUTH_REQUIRED) "需要重新授权" else "暂无配额窗口",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        when (state.health) {
+                            QuotaHealth.FRESH -> "最后更新 ${state.updatedAt}"
+                            QuotaHealth.EMPTY -> "连接正常"
+                            QuotaHealth.CACHED -> "正在显示缓存 · ${state.updatedAt}"
+                            QuotaHealth.AUTH_REQUIRED -> "授权已过期"
+                            QuotaHealth.SIGNED_OUT -> "未连接"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = statusColor,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (refreshing) Text("更新中…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun CodexWindowRow(label: String, value: Int, reset: String, resetAtEpoch: Long) {
+        val safe = value.coerceIn(0, 100)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text("$safe%", style = MaterialTheme.typography.titleLarge)
+            }
+            AppLinearProgress(
+                progress = safe / 100f,
+                modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
+            )
+            Text(
+                "重置于 ${QuotaResetText.app(reset, resetAtEpoch)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 
@@ -2076,7 +2173,7 @@ open class MainActivity : ComponentActivity() {
                 SettingsDivider()
                 SettingsSwitchRow(
                     title = "显示健康状态",
-                    subtitle = if (showHealthStatus) "在卡片和小组件标题前显示红绿状态点" else "已隐藏状态点；不会停止后台同步",
+                    subtitle = if (showHealthStatus) "在卡片和小部件标题前显示红绿状态点" else "已隐藏状态点；不会停止后台同步",
                     checked = showHealthStatus,
                     onCheckedChange = { enabled ->
                         showHealthStatus = enabled
@@ -2086,16 +2183,16 @@ open class MainActivity : ComponentActivity() {
                 )
             }
 
-            SettingsSection("小组件") {
+            SettingsSection("小部件") {
                 SettingsActionRow(
                     icon = { Icon(painterResource(R.drawable.ic_widget), contentDescription = null) },
-                    title = "小组件配置",
+                    title = "小部件配置",
                     subtitle = "服务与自定义界面",
                     onClick = { openActivityPage(ActivityPage.WIDGET_SETTINGS) },
                 )
             }
 
-            SettingsSection("主题") {
+            SettingsSection("个性化") {
                 StyleSelectionPreference()
                 SettingsDivider()
                 SettingsActionRow(
@@ -2188,7 +2285,7 @@ open class MainActivity : ComponentActivity() {
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SettingsSection("小组件") {
+            SettingsCard {
                 if (!hasWidgetServices) {
                     SettingsActionRow(
                         icon = { Icon(painterResource(R.drawable.ic_widget), contentDescription = null) },
@@ -2210,34 +2307,17 @@ open class MainActivity : ComponentActivity() {
                         },
                     )
                     SettingsDivider()
-                    SettingsSwitchRow(
-                        title = "显示副服务",
-                        subtitle = if (widgetShowSecondary) "2×4 布局左右显示主服务和副服务" else "关闭后所有布局只显示主服务",
-                        checked = widgetShowSecondary,
-                        onCheckedChange = { enabled ->
-                            widgetShowSecondary = enabled
+                    DropdownSelectionPreference(
+                        title = "副服务",
+                        summary = secondaryOptions.getOrNull(secondaryIndex)?.second.orEmpty(),
+                        subtitle = "4×2布局右侧显示副服务",
+                        items = secondaryOptions.map { it.second },
+                        selectedIndex = secondaryIndex,
+                        onSelected = { index ->
+                            widgetSecondaryId = secondaryOptions.getOrNull(index)?.first.orEmpty()
                             saveWidgetPreferences()
                         },
                     )
-                    AnimatedVisibility(
-                        visible = widgetShowSecondary,
-                        enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
-                        exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
-                    ) {
-                        Column {
-                            SettingsDivider()
-                            DropdownSelectionPreference(
-                                title = "副服务",
-                                summary = secondaryOptions.getOrNull(secondaryIndex)?.second ?: "不显示",
-                                items = secondaryOptions.map { it.second },
-                                selectedIndex = secondaryIndex,
-                                onSelected = { index ->
-                                    widgetSecondaryId = secondaryOptions.getOrNull(index)?.first.orEmpty()
-                                    saveWidgetPreferences()
-                                },
-                            )
-                        }
-                    }
                 }
                 SettingsDivider()
                 SettingsSwitchRow(
@@ -2263,7 +2343,7 @@ open class MainActivity : ComponentActivity() {
                         SettingsDivider()
                         DropdownSelectionPreference(
                             title = "换算方式",
-                            summary = "${widgetTokenUnitSystem.label}，最高显示 M",
+                            summary = widgetTokenUnitSystem.label,
                             items = WidgetTokenUnitSystem.entries.map { it.label },
                             selectedIndex = WidgetTokenUnitSystem.entries.indexOf(widgetTokenUnitSystem),
                             onSelected = { index ->
@@ -2278,7 +2358,7 @@ open class MainActivity : ComponentActivity() {
                 SettingsDivider()
                 SettingsActionRow(
                     icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
-                    title = "自定义小组件 UI",
+                    title = "自定义小部件卡片",
                     subtitle = "高度、上下偏移",
                     onClick = { openActivityPage(ActivityPage.WIDGET_UI_SETTINGS) },
                 )
@@ -2371,13 +2451,13 @@ open class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(top = 32.dp, bottom = 38.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Image(
                     painter = painterResource(R.mipmap.ic_launcher_foreground),
                     contentDescription = null,
-                    modifier = Modifier.size(164.dp),
+                    modifier = Modifier.size(180.dp),
                     contentScale = ContentScale.Fit,
                 )
             }
@@ -2408,21 +2488,26 @@ open class MainActivity : ComponentActivity() {
             SettingsSection("项目与支持") {
                 SettingsActionRow(
                     icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    title = "官方网站",
+                    subtitle = "credex.nickwoluff.com",
+                    onClick = { openExternalUrl("https://credex.nickwoluff.com") },
+                )
+                SettingsDivider()
+                SettingsActionRow(
+                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
                     title = "项目地址",
-                    onClick = { openExternalUrl("https://github.com/Orynnx/CodeX-Rate-on-Rear-Screen") },
+                    onClick = { openActivityPage(ActivityPage.PROJECTS) },
                 )
                 SettingsDivider()
                 SettingsActionRow(
                     icon = { Icon(painterResource(R.drawable.ic_info), null) },
                     title = "引用",
-                    subtitle = "使用的组件与鸣谢",
                     onClick = { openActivityPage(ActivityPage.REFERENCES) },
                 )
                 SettingsDivider()
                 SettingsActionRow(
                     icon = { Icon(painterResource(R.drawable.ic_info), null) },
                     title = "帮助",
-                    subtitle = "声明与使用说明",
                     onClick = { openActivityPage(ActivityPage.HELP) },
                 )
             }
@@ -2437,28 +2522,44 @@ open class MainActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun ProjectsScreen(modifier: Modifier = Modifier) {
+        Column(
+            modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            SettingsCard {
+                SettingsActionRow(
+                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    title = "Orynnx 原版仓库",
+                    subtitle = "github.com/Orynnx/CodeX-Rate-on-Rear-Screen",
+                    onClick = { openExternalUrl("https://github.com/Orynnx/CodeX-Rate-on-Rear-Screen") },
+                )
+                SettingsDivider()
+                SettingsActionRow(
+                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    title = "尼克狼 Fork 仓库",
+                    subtitle = "github.com/NickWoluff/Credex",
+                    onClick = { openExternalUrl("https://github.com/NickWoluff/Credex") },
+                )
+            }
+        }
+    }
+
+    @Composable
     private fun ReferencesScreen(modifier: Modifier = Modifier) {
         Column(
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
+            SettingsTextCard("Credex 使用了以下项目的部分或全部内容，感谢开源项目及其维护者提供的组件与工具支持（排名顺序不分先后）")
             SettingsSection("使用的组件") {
-                SettingsActionRow(icon = null, title = "Jetpack Compose", subtitle = "Android 官方声明式 UI", onClick = null, showChevron = false)
+                SettingsActionRow(icon = null, title = "Jetpack Compose", subtitle = "Google Inc. | Apache-2.0", onClick = { openExternalUrl("https://developer.android.com/jetpack/compose") })
                 SettingsDivider()
-                SettingsActionRow(icon = null, title = "Material 3", subtitle = "Google Material Design 组件", onClick = null, showChevron = false)
+                SettingsActionRow(icon = null, title = "Material 3", subtitle = "Google Inc. | Apache-2.0", onClick = { openExternalUrl("https://m3.material.io/") })
                 SettingsDivider()
-                SettingsActionRow(icon = null, title = "Miuix", subtitle = "Compose Miuix UI 组件", onClick = null, showChevron = false)
+                SettingsActionRow(icon = null, title = "Miuix", subtitle = "compose-miuix-ui | Apache-2.0", onClick = { openExternalUrl("https://github.com/compose-miuix-ui/miuix") })
                 SettingsDivider()
-                SettingsActionRow(icon = null, title = "Reorderable", subtitle = "列表拖拽排序", onClick = null, showChevron = false)
-            }
-            SettingsSection("鸣谢") {
-                SettingsActionRow(
-                    icon = null,
-                    title = "鸣谢",
-                    subtitle = "感谢上述开源项目及其维护者提供的组件与工具支持。",
-                    onClick = null,
-                    showChevron = false,
-                )
+                SettingsActionRow(icon = null, title = "Reorderable", subtitle = "Calvin-LL | Apache-2.0", onClick = { openExternalUrl("https://github.com/Calvin-LL/Reorderable") })
             }
         }
     }
@@ -2469,11 +2570,10 @@ open class MainActivity : ComponentActivity() {
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            SettingsSection("帮助") {
+            SettingsCard {
                 SettingsActionRow(
                     icon = { Icon(painterResource(R.drawable.ic_info), null) },
                     title = "声明",
-                    subtitle = "免责声明",
                     onClick = { openActivityPage(ActivityPage.DISCLAIMER) },
                 )
             }
@@ -2486,13 +2586,14 @@ open class MainActivity : ComponentActivity() {
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
+            SettingsSection("版权") {
+                SettingsSupportingTextRow("本应用图标由尼克狼唔（@NickWoluff）独立原创设计，相关著作权及其他权利归原作者所有。未经书面授权，任何个人或组织不得转载、修改、复制、传播、再许可或以其他方式使用。")
+            }
             SettingsSection("免责声明") {
-                SettingsActionRow(
-                    icon = null,
-                    title = "免责声明",
-                    subtitle = "本应用仅用于展示用户已授权账户的配额与余额信息，不隶属于任何模型服务商。数据以服务商控制台和接口返回为准，请勿据此作出重要决策。",
-                    onClick = null,
-                    showChevron = false,
+                SettingsSupportingTextRow(
+                    "本应用仅用于展示用户已授权账户的配额与余额信息，不隶属于任何模型服务商。数据以服务商控制台和接口返回为准，请勿据此作出重要决策。\n\n" +
+                        "本软件界面中展示的所有第三方模型服务商的名称、Logo、商标及相关标识，其知识产权均受到法律保护，并严格归属于各原始所有权人或其各自的公司。本软件对上述Logo及名称的使用仅限于指示性合理使用，目的仅在于帮助用户识别和选择相应接口服务。\n\n" +
+                        "本软件作为独立的第三方工具，不暗示或表示与任何服务商存在官方合作、赞助、授权、背书或从属关系。",
                 )
             }
         }
@@ -2527,11 +2628,11 @@ open class MainActivity : ComponentActivity() {
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = "$username GitHub 头像",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(40.dp).clip(CircleShape),
+                modifier = Modifier.size(48.dp).clip(CircleShape),
             )
         } ?: Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
@@ -2540,7 +2641,7 @@ open class MainActivity : ComponentActivity() {
                 painter = painterResource(R.drawable.ic_person),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(26.dp),
             )
         }
     }
@@ -2554,7 +2655,7 @@ open class MainActivity : ComponentActivity() {
                 .padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            SettingsSection("主题设置") {
+            SettingsCard {
                 DropdownSelectionPreference(
                     title = "主题",
                     summary = themeModeLabel(themeMode),
@@ -2640,6 +2741,7 @@ open class MainActivity : ComponentActivity() {
     private fun DropdownSelectionPreference(
         title: String,
         summary: String,
+        subtitle: String? = null,
         items: List<String>,
         selectedIndex: Int,
         onSelected: (Int) -> Unit,
@@ -2649,7 +2751,7 @@ open class MainActivity : ComponentActivity() {
                 items = items,
                 selectedIndex = selectedIndex,
                 title = title,
-                summary = summary,
+                summary = subtitle,
                 renderInRootScaffold = true,
                 onSelectedIndexChange = onSelected,
             )
@@ -2678,9 +2780,10 @@ open class MainActivity : ComponentActivity() {
             SettingsActionRow(
                 icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
                 title = title,
-                subtitle = summary,
+                subtitle = subtitle,
                 onClick = null,
                 showChevron = false,
+                trailingText = summary,
             )
             DropdownMenu(
                 expanded = expanded,
@@ -2920,12 +3023,19 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun SettingsSection(title: String, content: @Composable () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
-            if (uiStyle == UiStyle.MIUIX) {
-                AppCard { content() }
-            } else {
-                Column(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large)) { content() }
+            if (title.isNotBlank()) {
+                Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
             }
+            SettingsCard(content)
+        }
+    }
+
+    @Composable
+    private fun SettingsCard(content: @Composable () -> Unit) {
+        if (uiStyle == UiStyle.MIUIX) {
+            AppCard { content() }
+        } else {
+            Column(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large)) { content() }
         }
     }
 
@@ -2975,6 +3085,7 @@ open class MainActivity : ComponentActivity() {
         subtitle: String? = null,
         onClick: (() -> Unit)?,
         showChevron: Boolean = true,
+        trailingText: String? = null,
         keepLeadingInMiuix: Boolean = false,
     ) {
         if (uiStyle == UiStyle.MIUIX) {
@@ -3005,21 +3116,73 @@ open class MainActivity : ComponentActivity() {
                 colors = androidx.compose.material3.ListItemDefaults.colors(
                     containerColor = Color.Transparent,
                 ),
-                leadingContent = icon ?: {
-                    Icon(
-                        painterResource(defaultListIcon(title)),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
+                leadingContent = icon ?: if (onClick != null && showChevron) {
+                    {
+                        Icon(
+                            painterResource(defaultListIcon(title)),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else null,
                 supportingContent = subtitle?.takeIf { it.isNotBlank() }?.let { value ->
                     { Text(value) }
                 },
-                trailingContent = if (showChevron) {
+                trailingContent = if (trailingText != null) {
+                    { Text(trailingText, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                } else if (showChevron) {
                     { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null) }
                 } else null,
             ) { Text(title) }
         }
+    }
+
+    @Composable
+    private fun SettingsSupportingTextRow(text: String) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixBasicComponent(
+                title = null,
+                summary = text,
+            )
+        } else {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.extraSmall,
+                color = materialCardColor(),
+            ) {
+                SupportingTextContent(text)
+            }
+        }
+    }
+
+    @Composable
+    private fun SettingsTextCard(text: String) {
+        if (uiStyle == UiStyle.MIUIX) {
+            MiuixCard(modifier = Modifier.fillMaxWidth()) {
+                MiuixBasicComponent(
+                    title = null,
+                    summary = text,
+                )
+            }
+        } else {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                color = materialCardColor(),
+            ) {
+                SupportingTextContent(text)
+            }
+        }
+    }
+
+    @Composable
+    private fun SupportingTextContent(text: String) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+        )
     }
 
     @Composable
@@ -3059,7 +3222,7 @@ open class MainActivity : ComponentActivity() {
     }
 
     private fun defaultListIcon(title: String): Int = when {
-        title.contains("小组件") -> R.drawable.ic_widget
+        title.contains("小部件") -> R.drawable.ic_widget
         title.contains("通知") -> R.drawable.ic_notifications
         title.contains("电池") || title.contains("后台") -> R.drawable.ic_battery
         title.contains("隐私") || title.contains("健康") || title.contains("预测") -> R.drawable.ic_shield
@@ -3226,6 +3389,7 @@ open class MainActivity : ComponentActivity() {
             ActivityPage.WIDGET_UI_SETTINGS -> WidgetUiSettingsActivity::class.java
             ActivityPage.THEME_SETTINGS -> ThemeSettingsActivity::class.java
             ActivityPage.ABOUT -> AboutActivity::class.java
+            ActivityPage.PROJECTS -> ProjectsActivity::class.java
             ActivityPage.REFERENCES -> ReferencesActivity::class.java
             ActivityPage.HELP -> HelpActivity::class.java
             ActivityPage.DISCLAIMER -> DisclaimerActivity::class.java
@@ -3266,7 +3430,6 @@ open class MainActivity : ComponentActivity() {
         materialDynamicColor = DashboardPreferences.materialDynamicColor(this)
         widgetPrimaryId = WidgetSelectionPreferences.globalPrimary(this)
         widgetSecondaryId = WidgetSelectionPreferences.globalSecondary(this)
-        widgetShowSecondary = WidgetSelectionPreferences.showSecondary(this)
         widgetCollapseTokenValues = WidgetTokenDisplayPreferences.collapseTokenValues(this)
         widgetTokenUnitSystem = WidgetTokenDisplayPreferences.unitSystem(this)
         widgetHeightInput = WidgetHeightPreferences.customInput(this)
@@ -3294,7 +3457,6 @@ open class MainActivity : ComponentActivity() {
             this,
             widgetPrimaryId,
             widgetSecondaryId,
-            widgetShowSecondary,
         )
         QuotaAppWidgetProvider.updateAll(this)
         QuotaForegroundService.refreshNotification(this)
@@ -3322,7 +3484,7 @@ open class MainActivity : ComponentActivity() {
         ActivityPage.WIDGET_SETTINGS, ActivityPage.WIDGET_UI_SETTINGS -> PageDataSnapshot(
             services = StandardBalanceRepository.list(this),
         )
-        ActivityPage.ABOUT, ActivityPage.REFERENCES, ActivityPage.HELP, ActivityPage.DISCLAIMER -> PageDataSnapshot()
+        ActivityPage.ABOUT, ActivityPage.PROJECTS, ActivityPage.REFERENCES, ActivityPage.HELP, ActivityPage.DISCLAIMER -> PageDataSnapshot()
         ActivityPage.CONFIGURATION -> PageDataSnapshot(
             quotaState = QuotaRepository.current(this),
             services = StandardBalanceRepository.list(this),
@@ -3609,6 +3771,8 @@ class WidgetUiSettingsActivity : MainActivity()
 class ThemeSettingsActivity : MainActivity()
 
 class AboutActivity : MainActivity()
+
+class ProjectsActivity : MainActivity()
 
 class ReferencesActivity : MainActivity()
 

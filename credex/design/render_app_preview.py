@@ -105,7 +105,7 @@ def settings():
     row(d, 327, "后台与电池", "不受电池优化限制")
     t(d, (24, 416), "主屏幕", 11, SECONDARY)
     d.rounded_rectangle((20, 438, 370, 510), 22, fill=SURFACE, outline=LINE, width=1)
-    row(d, 441, "添加配额小组件", "小尺寸主窗口 · 横向双窗口")
+    row(d, 441, "添加配额小部件", "小尺寸主窗口 · 横向双窗口")
     t(d, (24, 536), "账户", 11, SECONDARY)
     d.rounded_rectangle((20, 558, 370, 704), 22, fill=SURFACE, outline=LINE, width=1)
     row(d, 561, "Plus", "OpenAI 账户已授权")

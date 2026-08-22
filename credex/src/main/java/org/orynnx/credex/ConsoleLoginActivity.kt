@@ -22,13 +22,16 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
             BalanceAuthMode.valueOf(intent.getStringExtra(EXTRA_AUTH_MODE).orEmpty())
         }.getOrElse { finish(); return }
         val spec = spec(mode)
-        loginStatus = "请登录 ${spec.brand}，登录完成后点击完成"
+        loginStatus = "请登录 ${spec.brand}，登录成功后将自动返回"
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.javaScriptCanOpenWindowsAutomatically = true
             settings.setSupportMultipleWindows(false)
             settings.userAgentString = settings.userAgentString.replace("; wv", "")
+            if (mode == BalanceAuthMode.DEEPSEEK_CONSOLE) {
+                settings.userAgentString = DESKTOP_USER_AGENT
+            }
         }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
@@ -41,16 +44,28 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 spec.cookieOrigins.forEach { origin -> captureCookie(CookieManager.getInstance().getCookie(origin).orEmpty()) }
-                loginStatus = if (cookies.isEmpty()) "请继续完成 ${spec.brand} 登录" else "已检测到登录会话，可点击完成"
+                loginStatus = if (cookies.isEmpty()) "请继续完成 ${spec.brand} 登录" else "已检测到登录状态，正在返回应用…"
                 if (cookies.isNotEmpty() && mode in setOf(BalanceAuthMode.DEEPSEEK_CONSOLE, BalanceAuthMode.OPENCODE_ZEN, BalanceAuthMode.VOLCENGINE_BALANCE, BalanceAuthMode.GLM_BALANCE)) {
                     readVisibleBalance()
                 }
+                if (hasLikelyAuthCookie() && !isLoginPage(url)) {
+                    view.evaluateJavascript(
+                        "(function(){return !!document.querySelector('input[type=password],input[autocomplete*=password],input[autocomplete*=username]');})()",
+                    ) { hasLoginForm ->
+                        if (hasLoginForm != "true") view.postDelayed(::complete, 240L)
+                    }
+                }
+            }
+
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+                super.onReceivedError(view, request, error)
+                if (request.isForMainFrame) loginStatus = "登录页面加载失败，请点击右上角刷新重试"
             }
         }
         showLoginSurface(
             title = spec.brand,
-            primaryAction = LoginTopAction.COMPLETE,
-            onPrimaryAction = ::complete,
+            primaryAction = LoginTopAction.RETRY,
+            onPrimaryAction = { loadLoginUrl(webView.url?.takeIf { it.isNotBlank() } ?: spec.loginUrl) },
         )
         clearLoginSessionData { loadLoginUrl(spec.loginUrl) }
     }
@@ -65,6 +80,12 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
 
     private fun captureCookie(header: String) {
         header.split(';').map(String::trim).filter { it.contains('=') }.forEach(cookies::add)
+    }
+
+    private fun isLoginPage(url: String): Boolean = url.contains(Regex("/(login|signin|sign-in|auth)(/|\\?|$)", RegexOption.IGNORE_CASE))
+
+    private fun hasLikelyAuthCookie(): Boolean = cookies.any { cookie ->
+        cookie.substringBefore('=').contains(Regex("session|token|auth|jwt|user", RegexOption.IGNORE_CASE))
     }
 
     private fun readVisibleBalance() {
@@ -134,6 +155,7 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
     }
 
     companion object {
+        private const val DESKTOP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         const val EXTRA_AUTH_MODE = "auth_mode"
         const val EXTRA_SESSION_TOKEN = "session_token"
         const val EXTRA_CAPTURED_BALANCE = "captured_balance"
