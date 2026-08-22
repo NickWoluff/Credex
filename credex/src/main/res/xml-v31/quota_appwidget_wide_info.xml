@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description"
-    android:configure="org.orynnx.credex.QuotaWideWidgetConfigurationActivity"
+    android:configure="com.nickwoluff.credex.QuotaWideWidgetConfigurationActivity"
     android:initialLayout="@layout/widget_quota_medium"
     android:minWidth="300dp"
     android:minHeight="110dp"

@@ -11,11 +11,11 @@ plugins {
 layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("Credex-app"))
 
 android {
-    namespace = "org.orynnx.credex"
+    namespace = "com.nickwoluff.credex"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "org.orynnx.credex"
+        applicationId = "com.nickwoluff.credex"
         minSdk = 29
         targetSdk = 37
         versionCode = 12

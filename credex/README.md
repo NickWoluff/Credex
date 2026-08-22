@@ -16,7 +16,7 @@ Android 桌面小部件支持主服务和可选副服务，可在应用的“小
 
 ## 数据安全
 
-登录会话、访问令牌和 API Key 仅保存于 Android Keystore 加密存储。导出的 `content://org.orynnx.credex/quota` Provider 仅提供展示字段，不包含令牌、账号标识或原始响应。
+登录会话、访问令牌和 API Key 仅保存于 Android Keystore 加密存储。导出的 `content://com.nickwoluff.credex/quota` Provider 仅提供展示字段，不包含令牌、账号标识或原始响应。
 
 ## 构建
 

@@ -56,7 +56,7 @@
             android:screenOrientation="portrait" />
         <provider
             android:name=".QuotaProvider"
-            android:authorities="org.orynnx.credex"
+            android:authorities="com.nickwoluff.credex"
             android:exported="true"
             tools:ignore="ExportedContentProvider" />
         <service
