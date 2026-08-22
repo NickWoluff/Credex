@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -751,6 +752,7 @@ open class MainActivity : ComponentActivity() {
             || isProjects
         val barColor = MiuixTheme.colorScheme.surface.copy(alpha = if (blurAvailable) 0.48f else 1f)
         MiuixScaffold(
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
                 Box(
                     Modifier
@@ -764,6 +766,7 @@ open class MainActivity : ComponentActivity() {
                 ) {
                     MiuixTopAppBar(
                         modifier = Modifier.fillMaxWidth(),
+                        defaultWindowInsetsPadding = false,
                         color = barColor,
                         title = when {
                             isThemeSettings -> "主题设置"
@@ -1874,10 +1877,10 @@ open class MainActivity : ComponentActivity() {
                                 addBrand = null
                                 startCodexLogin()
                             }
-                            AddBrand.DEEPSEEK -> AddServiceOption("账户余额", "内置登录 | DeepSeek 开放平台余额", 0, 1) {
+                            AddBrand.DEEPSEEK -> AddServiceOption("账户余额", "API Key 登录 | DeepSeek 开放平台余额", 0, 1) {
                                 showAddServices = false
                                 addBrand = null
-                                openBalanceEditor(null, BalanceAuthMode.DEEPSEEK_CONSOLE)
+                                openBalanceEditor(null, BalanceAuthMode.DEEPSEEK_API_KEY)
                             }
                             AddBrand.SILICON_FLOW -> AddServiceOption("账户余额", "内置登录 | 控制台钱包", 0, 1) {
                                 showAddServices = false
@@ -2874,9 +2877,9 @@ open class MainActivity : ComponentActivity() {
                             Text("登录方式：邮箱密码", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                         }
                         balanceAuthMode == BalanceAuthMode.API_KEY -> {
-                            Text("旧版 API Key 服务", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                            Text("登录方式：API Key", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                             Text(
-                                "此方式仅为兼容旧配置；新增 SiliconFlow 请使用控制台登录。",
+                                "凭据会使用 Android Keystore 加密保存，并通过官方接口读取余额。",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -2961,8 +2964,7 @@ open class MainActivity : ComponentActivity() {
                     Text(
                         when (balanceAuthMode) {
                             BalanceAuthMode.API_KEY -> "API Key 模式读取 API 余额 data.totalBalance。Endpoint 建议填写完整的 https://api.siliconflow.cn/v1；API Key 会使用 Android Keystore 加密保存。"
-                            BalanceAuthMode.DEEPSEEK_API_KEY -> "旧版 DeepSeek API Key 服务使用 GET /user/balance；凭据会使用 Android Keystore 加密保存。"
-                            BalanceAuthMode.DEEPSEEK_CONSOLE -> "通过内置浏览器登录 DeepSeek 开放平台，读取登录后可见的账户余额。应用只保存会话状态，不读取密码或页面内容。"
+                            BalanceAuthMode.DEEPSEEK_API_KEY -> "DeepSeek 使用 GET /user/balance 读取账户余额；API Key 会使用 Android Keystore 加密保存。"
                             BalanceAuthMode.SILICONFLOW_CONSOLE -> "控制台模式由内置浏览器完成登录，自动读取 /walletd-server 的网页余额；打开上面的开关后，还会读取 stage=3 代金券并按剩余额度累加。"
                             BalanceAuthMode.MIMO_BALANCE -> "Xiaomi MIMO 按量模式读取 /api/v1/balance，按人民币显示现金余额，并在详情中保留赠送余额。余额存在约 5 分钟延迟。"
                             BalanceAuthMode.MIMO_TOKEN_PLAN -> "Xiaomi MIMO Token Plan 读取 /api/v1/tokenPlan/detail 与 /api/v1/tokenPlan/usage，主值显示剩余百分比，详情显示 Credits 和有效期。"
@@ -3544,7 +3546,6 @@ open class MainActivity : ComponentActivity() {
         balanceEndpointInput = service?.endpoint ?: when (balanceAuthMode) {
             BalanceAuthMode.API_KEY -> "https://api.siliconflow.cn/v1"
             BalanceAuthMode.DEEPSEEK_API_KEY -> "https://api.deepseek.com"
-            BalanceAuthMode.DEEPSEEK_CONSOLE -> "https://platform.deepseek.com"
             BalanceAuthMode.SILICONFLOW_CONSOLE -> "https://cloud.siliconflow.cn"
             BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> "https://platform.xiaomimimo.com"
             BalanceAuthMode.VOLCENGINE_BALANCE -> "https://console.volcengine.com"
@@ -3610,7 +3611,6 @@ open class MainActivity : ComponentActivity() {
                 BalanceAuthMode.KIMI -> "请完成 Kimi 官方授权"
                 BalanceAuthMode.KIMI_BALANCE -> "请输入 Kimi API Key"
                 BalanceAuthMode.SILICONFLOW_CONSOLE,
-                BalanceAuthMode.DEEPSEEK_CONSOLE,
                 BalanceAuthMode.MIMO_BALANCE,
                 BalanceAuthMode.MIMO_TOKEN_PLAN,
                 BalanceAuthMode.VOLCENGINE_BALANCE,
@@ -3640,7 +3640,6 @@ open class MainActivity : ComponentActivity() {
             when (selectedAuthMode) {
                 BalanceAuthMode.SILICONFLOW_CONSOLE -> startSiliconFlowLogin(serviceId)
                 BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> startMimoLogin(serviceId)
-                BalanceAuthMode.DEEPSEEK_CONSOLE,
                 BalanceAuthMode.VOLCENGINE_BALANCE,
                 BalanceAuthMode.VOLCENGINE_CODING_PLAN,
                 BalanceAuthMode.VOLCENGINE_AGENT_PLAN,

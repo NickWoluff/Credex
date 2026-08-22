@@ -58,7 +58,7 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
                 super.onPageFinished(view, url)
                 spec.cookieOrigins.forEach { origin -> captureCookie(CookieManager.getInstance().getCookie(origin).orEmpty(), spec) }
                 loginStatus = if (authCookies.isEmpty() || !userInteracted) "请继续完成 ${spec.brand} 登录" else "正在验证登录状态…"
-                if (cookies.isNotEmpty() && mode in setOf(BalanceAuthMode.DEEPSEEK_CONSOLE, BalanceAuthMode.OPENCODE_ZEN, BalanceAuthMode.VOLCENGINE_BALANCE, BalanceAuthMode.GLM_BALANCE)) {
+                if (cookies.isNotEmpty() && mode in setOf(BalanceAuthMode.OPENCODE_ZEN, BalanceAuthMode.VOLCENGINE_BALANCE, BalanceAuthMode.GLM_BALANCE)) {
                     readVisibleBalance()
                 }
                 if (!isLoginPage(url)) {
@@ -134,7 +134,6 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
 
     private fun readVisibleBalance() {
         val pattern = when (mode) {
-            BalanceAuthMode.DEEPSEEK_CONSOLE -> "(?:账户余额|可用余额|余额|Account Balance|Available Balance)\\s*[:：]?\\s*[¥￥]?\\s*([0-9]+(?:\\.[0-9]+)?)"
             BalanceAuthMode.OPENCODE_ZEN -> "(?:Current Balance|Current balance|当前余额)\\s*\\$?\\s*([0-9]+(?:\\.[0-9]+)?)"
             BalanceAuthMode.VOLCENGINE_BALANCE, BalanceAuthMode.GLM_BALANCE -> "(?:可用余额|账户余额|现金余额|Available Balance)\\s*[:：]?\\s*[¥￥]?\\s*([0-9]+(?:\\.[0-9]+)?)"
             else -> return
@@ -175,11 +174,6 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
     }
 
     private fun spec(mode: BalanceAuthMode): LoginSpec = when (mode) {
-        BalanceAuthMode.DEEPSEEK_CONSOLE -> LoginSpec(
-            "DeepSeek",
-            "https://platform.deepseek.com/balance",
-            listOf("https://platform.deepseek.com", "https://api.deepseek.com"),
-        )
         BalanceAuthMode.VOLCENGINE_BALANCE -> LoginSpec(
             "火山引擎",
             "https://console.volcengine.com/finance/overview",

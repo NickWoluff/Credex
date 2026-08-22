@@ -28,7 +28,6 @@ enum class BalanceAuthMode {
     EMAIL_PASSWORD,
     API_KEY,
     DEEPSEEK_API_KEY,
-    DEEPSEEK_CONSOLE,
     SILICONFLOW_CONSOLE,
     MIMO_BALANCE,
     MIMO_TOKEN_PLAN,
@@ -56,7 +55,6 @@ internal fun BalanceAuthMode.isPlan(): Boolean = when (this) {
 }
 
 internal fun BalanceAuthMode.usesBrowserLogin(): Boolean = when (this) {
-    BalanceAuthMode.DEEPSEEK_CONSOLE,
     BalanceAuthMode.SILICONFLOW_CONSOLE,
     BalanceAuthMode.MIMO_BALANCE,
     BalanceAuthMode.MIMO_TOKEN_PLAN,
@@ -433,7 +431,6 @@ object StandardBalanceRepository {
             BalanceAuthMode.SILICONFLOW_CONSOLE -> Credentials(service.subjectId, service.sessionToken)
             BalanceAuthMode.MIMO_BALANCE,
             BalanceAuthMode.MIMO_TOKEN_PLAN,
-            BalanceAuthMode.DEEPSEEK_CONSOLE,
             BalanceAuthMode.VOLCENGINE_BALANCE,
             BalanceAuthMode.VOLCENGINE_CODING_PLAN,
             BalanceAuthMode.VOLCENGINE_AGENT_PLAN,
@@ -564,7 +561,6 @@ object StandardBalanceRepository {
             BalanceAuthMode.KIMI_BALANCE -> loginKimiBalance(context, service, secret)
             BalanceAuthMode.SILICONFLOW_CONSOLE -> loginSiliconFlowConsole(context, service, account, secret)
             BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> loginMimo(context, service, secret)
-            BalanceAuthMode.DEEPSEEK_CONSOLE,
             BalanceAuthMode.VOLCENGINE_BALANCE,
             BalanceAuthMode.VOLCENGINE_CODING_PLAN,
             BalanceAuthMode.VOLCENGINE_AGENT_PLAN,
@@ -670,7 +666,6 @@ object StandardBalanceRepository {
         )
         replace(context, withSession)
         val capturedMode = service.authMode in setOf(
-            BalanceAuthMode.DEEPSEEK_CONSOLE,
             BalanceAuthMode.OPENCODE_ZEN,
             BalanceAuthMode.VOLCENGINE_BALANCE,
             BalanceAuthMode.GLM_BALANCE,
@@ -680,7 +675,6 @@ object StandardBalanceRepository {
                 balance = formatBalance(capturedBalance.toBigDecimal()),
                 currency = if (service.authMode == BalanceAuthMode.OPENCODE_ZEN) "USD" else "CNY",
                 detail = when (service.authMode) {
-                    BalanceAuthMode.DEEPSEEK_CONSOLE -> "DeepSeek 开放平台账户余额"
                     BalanceAuthMode.OPENCODE_ZEN -> "OpenCode Zen 当前余额"
                     BalanceAuthMode.VOLCENGINE_BALANCE -> "火山引擎账户可用余额"
                     BalanceAuthMode.GLM_BALANCE -> "GLM 账户可用余额"
@@ -1046,7 +1040,6 @@ object StandardBalanceRepository {
             BalanceAuthMode.VOLCENGINE_CODING_PLAN,
             BalanceAuthMode.VOLCENGINE_AGENT_PLAN,
             BalanceAuthMode.OPENCODE_ZEN,
-            BalanceAuthMode.DEEPSEEK_CONSOLE,
             BalanceAuthMode.GLM_BALANCE,
             BalanceAuthMode.GLM_CODING_PLAN -> {
                 if (initial.sessionToken.isBlank()) return initial.public()
@@ -1194,11 +1187,10 @@ object StandardBalanceRepository {
         BalanceAuthMode.VOLCENGINE_AGENT_PLAN -> fetchVolcengineAgentPlan(service)
         BalanceAuthMode.GLM_BALANCE -> fetchGlmBalance(service)
         BalanceAuthMode.GLM_CODING_PLAN -> fetchGlmCodingPlan(service)
-        BalanceAuthMode.DEEPSEEK_CONSOLE,
         BalanceAuthMode.OPENCODE_ZEN -> service.copy(
             updatedAt = clock(),
             lastAttemptAtMillis = System.currentTimeMillis(),
-            status = if (service.authMode == BalanceAuthMode.DEEPSEEK_CONSOLE) "请重新打开登录页更新 DeepSeek 余额" else "请重新打开登录页更新 Zen 余额",
+            status = "请重新打开登录页更新 Zen 余额",
             health = if (service.balance != "--") BalanceHealth.CACHED else BalanceHealth.AUTH_REQUIRED,
         )
         else -> error("不是通用控制台服务")

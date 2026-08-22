@@ -19,7 +19,6 @@ abstract class BaseWidgetConfigurationActivity : Activity() {
     protected abstract val maxSelections: Int
     private var appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
     private val selectedIds = linkedSetOf<String>()
-    private val checkBoxes = mutableListOf<Pair<String, CheckBox>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,7 +86,6 @@ abstract class BaseWidgetConfigurationActivity : Activity() {
                     }
                 }
             }
-            checkBoxes += id to checkBox
             list.addView(checkBox, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))

@@ -22,7 +22,7 @@ internal enum class PlatformBrand(val displayName: String) {
 }
 
 internal fun platformBrand(authMode: BalanceAuthMode): PlatformBrand = when (authMode) {
-    BalanceAuthMode.DEEPSEEK_API_KEY, BalanceAuthMode.DEEPSEEK_CONSOLE -> PlatformBrand.DEEPSEEK
+    BalanceAuthMode.DEEPSEEK_API_KEY -> PlatformBrand.DEEPSEEK
     BalanceAuthMode.API_KEY, BalanceAuthMode.SILICONFLOW_CONSOLE -> PlatformBrand.SILICON_FLOW
     BalanceAuthMode.MIMO_BALANCE, BalanceAuthMode.MIMO_TOKEN_PLAN -> PlatformBrand.XIAOMI_MIMO
     BalanceAuthMode.VOLCENGINE_BALANCE,

@@ -8,7 +8,7 @@ class WidgetServiceLabelTest {
     fun pickerLabelsUseConfiguredServiceName() {
         assertEquals(
             "账户余额",
-            widgetServiceLabel(BalanceService(id = "deepseek", name = "账户余额", endpoint = "", authMode = BalanceAuthMode.DEEPSEEK_CONSOLE)),
+            widgetServiceLabel(BalanceService(id = "deepseek", name = "账户余额", endpoint = "", authMode = BalanceAuthMode.DEEPSEEK_API_KEY)),
         )
         assertEquals(
             "Token Plan",

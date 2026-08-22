@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -200,8 +201,10 @@ private fun LoginSurface(
 ) {
     if (style == UiStyle.MIUIX) {
         MiuixScaffold(
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
                 MiuixTopAppBar(
+                    defaultWindowInsetsPadding = false,
                     title = title,
                     navigationIcon = {
                         MiuixIconButton(onClick = onBack, holdDownState = true) {
