@@ -88,6 +88,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
@@ -2770,13 +2771,14 @@ open class MainActivity : ComponentActivity() {
                 .fillMaxWidth()
                 .pointerInput(title, items) {
                     detectTapGestures { position ->
-                        menuOffset = with(density) { DpOffset(position.x.toDp(), position.y.toDp()) }
+                        menuOffset = with(density) { DpOffset(position.x.toDp(), 0.dp) }
                         expanded = true
                     }
                 }
                 .semantics {
                     role = Role.Button
                     onClick {
+                        menuOffset = DpOffset.Zero
                         expanded = true
                         true
                     }
@@ -2794,17 +2796,24 @@ open class MainActivity : ComponentActivity() {
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
                 offset = menuOffset,
+                shape = MenuDefaults.standaloneGroupShape,
+                containerColor = MenuDefaults.groupStandardContainerColor,
             ) {
                 items.forEachIndexed { index, item ->
                     DropdownMenuItem(
+                        selected = index == selectedIndex,
                         text = { Text(item) },
                         onClick = {
                             expanded = false
                             onSelected(index)
                         },
-                        leadingIcon = {
-                            if (index == selectedIndex) Icon(Icons.Filled.Check, contentDescription = null)
-                            else Spacer(Modifier.size(24.dp))
+                        shapes = MenuDefaults.itemShape(index, items.size),
+                        selectedLeadingIcon = {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                            )
                         },
                     )
                 }
