@@ -83,7 +83,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -106,6 +105,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState as rememberMaterialTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -118,19 +118,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
@@ -145,6 +144,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
@@ -227,6 +227,11 @@ private data class PageDataSnapshot(
 
 private const val BOUNDARY_HAPTIC_THRESHOLD = 1f
 
+private enum class FlingBoundary {
+    TOP,
+    BOTTOM,
+}
+
 @Composable
 private fun Modifier.verticalBoundaryHaptics(
     canScrollBackward: () -> Boolean,
@@ -237,50 +242,27 @@ private fun Modifier.verticalBoundaryHaptics(
     val currentCanScrollForward by rememberUpdatedState(canScrollForward)
     val connection = remember(hapticFeedback) {
         object : NestedScrollConnection {
-            private var topTriggered = false
-            private var bottomTriggered = false
+            private var pendingBoundary: FlingBoundary? = null
 
-            private fun triggerTopBoundary() {
-                if (!topTriggered) {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureEnd)
-                    topTriggered = true
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                pendingBoundary = when {
+                    available.y > BOUNDARY_HAPTIC_THRESHOLD && currentCanScrollBackward() -> FlingBoundary.TOP
+                    available.y < -BOUNDARY_HAPTIC_THRESHOLD && currentCanScrollForward() -> FlingBoundary.BOTTOM
+                    else -> null
                 }
-            }
-
-            private fun triggerBottomBoundary() {
-                if (!bottomTriggered) {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureEnd)
-                    bottomTriggered = true
-                }
-            }
-
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -BOUNDARY_HAPTIC_THRESHOLD) topTriggered = false
-                if (available.y > BOUNDARY_HAPTIC_THRESHOLD) bottomTriggered = false
-                return Offset.Zero
-            }
-
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                if (source == NestedScrollSource.UserInput) {
-                    when {
-                        available.y > BOUNDARY_HAPTIC_THRESHOLD && !currentCanScrollBackward() -> triggerTopBoundary()
-                        available.y < -BOUNDARY_HAPTIC_THRESHOLD && !currentCanScrollForward() -> triggerBottomBoundary()
-                    }
-                }
-                return Offset.Zero
+                return Velocity.Zero
             }
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                when {
-                    available.y > BOUNDARY_HAPTIC_THRESHOLD && !currentCanScrollBackward() -> triggerTopBoundary()
-                    available.y < -BOUNDARY_HAPTIC_THRESHOLD && !currentCanScrollForward() -> triggerBottomBoundary()
+                val reachedBoundary = when (pendingBoundary) {
+                    FlingBoundary.TOP -> !currentCanScrollBackward()
+                    FlingBoundary.BOTTOM -> !currentCanScrollForward()
+                    null -> false
                 }
-                topTriggered = false
-                bottomTriggered = false
+                pendingBoundary = null
+                if (reachedBoundary) {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                }
                 return Velocity.Zero
             }
         }
@@ -294,6 +276,19 @@ private fun Modifier.appVerticalScroll(state: ScrollState = rememberScrollState(
         canScrollBackward = { state.canScrollBackward },
         canScrollForward = { state.canScrollForward },
     ).verticalScroll(state)
+
+@Composable
+private fun KeepDialogNavigationImmersive() {
+    val view = LocalView.current
+    SideEffect {
+        val dialogWindow = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
+        WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+        dialogWindow.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            dialogWindow.isNavigationBarContrastEnforced = false
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 open class MainActivity : ComponentActivity() {
@@ -1937,10 +1932,6 @@ open class MainActivity : ComponentActivity() {
             AddBrand.MIMO -> "添加 Xiaomi MIMO"
             AddBrand.STANDARD -> "添加自定义接口"
         }
-        val close = {
-            if (addBrand == null) showAddServices = false else addBrand = null
-        }
-
         @Composable
         fun AddServicesBody() {
                 AnimatedContent(
@@ -2039,6 +2030,12 @@ open class MainActivity : ComponentActivity() {
                                 openBalanceEditor(null)
                             }
                         }
+                        Spacer(
+                            Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .height(if (uiStyle == UiStyle.MATERIAL) 16.dp else 12.dp),
+                        )
                     }
                 }
         }
@@ -2054,18 +2051,12 @@ open class MainActivity : ComponentActivity() {
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
                         .padding(horizontal = 24.dp)
-                        .padding(top = 4.dp, bottom = 16.dp),
+                        .padding(top = 4.dp),
                 ) {
                     Text(title, style = MaterialTheme.typography.headlineSmall)
                     Spacer(Modifier.height(16.dp))
                     Box(Modifier.heightIn(max = 560.dp)) { AddServicesBody() }
-                    Spacer(Modifier.height(16.dp))
-                    FilledTonalButton(
-                        onClick = close,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                    ) { Text(if (selected == null) "关闭" else "返回") }
                 }
             }
         } else {
@@ -2075,20 +2066,8 @@ open class MainActivity : ComponentActivity() {
                 defaultWindowInsetsPadding = false,
                 onDismissRequest = { showAddServices = false; addBrand = null },
             ) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 620.dp)
-                        .navigationBarsPadding()
-                        .padding(bottom = 12.dp),
-                ) {
-                    AddServicesBody()
-                    Spacer(Modifier.height(12.dp))
-                    AppNeutralButton(
-                        onClick = close,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (selected == null) "关闭" else "返回") }
-                }
+                KeepDialogNavigationImmersive()
+                Box(Modifier.fillMaxWidth().heightIn(max = 620.dp)) { AddServicesBody() }
             }
         }
     }
@@ -2251,8 +2230,13 @@ open class MainActivity : ComponentActivity() {
     private fun SettingsScreen(modifier: Modifier = Modifier) {
         val notificationsAllowed = Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         val batteryUnrestricted = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+        val navigationInset = if (uiStyle == UiStyle.MIUIX) Modifier.navigationBarsPadding() else Modifier
         Column(
-            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier
+                .fillMaxSize()
+                .appVerticalScroll()
+                .padding(start = 20.dp, top = 14.dp, end = 20.dp, bottom = 24.dp)
+                .then(navigationInset),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             SettingsSection("界面") {
@@ -2841,7 +2825,6 @@ open class MainActivity : ComponentActivity() {
         selectedIndex: Int,
         onSelected: (Int) -> Unit,
     ) {
-        val hapticFeedback = LocalHapticFeedback.current
         if (uiStyle == UiStyle.MIUIX) {
             MiuixOverlayDropdownPreference(
                 items = items,
@@ -2849,13 +2832,11 @@ open class MainActivity : ComponentActivity() {
                 title = title,
                 summary = subtitle,
                 renderInRootScaffold = true,
-                onSelectedIndexChange = { index ->
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onSelected(index)
-                },
+                onSelectedIndexChange = onSelected,
             )
             return
         }
+        val hapticFeedback = LocalHapticFeedback.current
         var expanded by remember { mutableStateOf(false) }
         var menuAnchor by remember { mutableStateOf(DpOffset.Zero) }
         val density = LocalDensity.current
