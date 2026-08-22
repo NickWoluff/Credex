@@ -119,6 +119,7 @@ enum class MaterialPaletteStyle { TONAL_SPOT, VIBRANT, EXPRESSIVE, NEUTRAL }
 /** A display host that can independently opt a balance service in or out. */
 enum class BalanceSurface(val shortLabel: String, val label: String) {
     LAUNCHER("主屏", "Android 原生小组件"),
+    MAML_DESKTOP("桌面", "小米桌面 MAML"),
     ASSISTANT_REAR("助手", "Assistant 背屏"),
     WALLPAPER_REAR("壁纸", "Wallpaper 背屏"),
 }

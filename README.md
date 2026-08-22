@@ -12,17 +12,17 @@ Credex 是一款仅面向竖屏手机的 Android 服务余额与配额查看工�
 
 ## 项目结构
 
-- `codex-quota-companion/`：Android 应用、服务适配、小组件和设置页面。
+- `credex/`：Android 应用、服务适配、小组件和设置页面。
 - `docs/`：服务接口研究与显示面说明。
-- `codex-quota-companion/design/`：设计预览和渲染校验脚本，不会打包进应用。
+- `credex/design/`：设计预览和渲染校验脚本，不会打包进应用。
 
 ## 构建与测试
 
 项目使用 JDK 17 和仓库自带的 Gradle Wrapper：
 
 ```powershell
-.\gradlew.bat :codex-quota-companion:testDebugUnitTest
-.\gradlew.bat :codex-quota-companion:assembleDebug
+.\gradlew.bat :credex:testDebugUnitTest
+.\gradlew.bat :credex:assembleDebug
 ```
 
 Debug APK 输出路径：`build/Credex-app/outputs/apk/debug/Credex-v<版本号>-debug.apk`。

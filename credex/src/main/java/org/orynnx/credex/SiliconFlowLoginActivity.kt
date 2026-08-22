@@ -52,10 +52,10 @@ class SiliconFlowLoginActivity : LoginSurfaceActivity() {
         }
         showLoginSurface(
             title = "SiliconFlow",
-            primaryAction = LoginTopAction.OPEN_CONSOLE,
-            onPrimaryAction = { loadLoginUrl(SILICONFLOW_CONSOLE_URL) },
+            primaryAction = LoginTopAction.RETRY,
+            onPrimaryAction = { loadLoginUrl(webView.url?.takeIf { it.isNotBlank() } ?: SILICONFLOW_URL) },
         )
-        loadLoginUrl(SILICONFLOW_URL)
+        clearLoginSessionData { loadLoginUrl(SILICONFLOW_URL) }
     }
 
     override fun onDestroy() {

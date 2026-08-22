@@ -23,8 +23,8 @@ Android 桌面小组件支持主服务和可选副服务，可在应用的“小
 需要 JDK 17：
 
 ```powershell
-.\gradlew.bat :codex-quota-companion:testDebugUnitTest
-.\gradlew.bat :codex-quota-companion:assembleDebug
+.\gradlew.bat :credex:testDebugUnitTest
+.\gradlew.bat :credex:assembleDebug
 ```
 
 Debug APK 位于仓库根目录的 `build/Credex-app/outputs/apk/debug/Credex-v<版本号>-debug.apk`。

@@ -43,7 +43,7 @@ class CodexLoginActivity : LoginSurfaceActivity() {
             primaryAction = LoginTopAction.COMPLETE,
             onPrimaryAction = ::completeIfReady,
         )
-        if (savedInstanceState == null) beginAuthorization()
+        if (savedInstanceState == null) clearLoginSessionData { beginAuthorization() }
     }
 
     override fun onDestroy() {

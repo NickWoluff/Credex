@@ -26,6 +26,8 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.javaScriptCanOpenWindowsAutomatically = true
+            settings.setSupportMultipleWindows(false)
             settings.userAgentString = settings.userAgentString.replace("; wv", "")
         }
         CookieManager.getInstance().setAcceptCookie(true)
@@ -50,7 +52,7 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
             primaryAction = LoginTopAction.COMPLETE,
             onPrimaryAction = ::complete,
         )
-        loadLoginUrl(spec.loginUrl)
+        clearLoginSessionData { loadLoginUrl(spec.loginUrl) }
     }
 
     override fun onDestroy() {

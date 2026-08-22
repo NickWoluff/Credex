@@ -2,10 +2,11 @@ package org.orynnx.credex
 
 import android.os.Bundle
 import android.graphics.Color
-import android.view.View
 import android.webkit.WebSettings
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.webkit.CookieManager
+import android.webkit.WebStorage
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -49,9 +50,6 @@ import top.yukonga.miuix.kmp.icon.extended.Refresh
 abstract class LoginSurfaceActivity : ComponentActivity() {
     protected lateinit var webView: WebView
     protected var loginStatus by mutableStateOf("")
-    private var pendingLoginUrl: String? = null
-    private var loginWebViewAttached = false
-    private var loginWebViewLaidOut = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,13 +64,16 @@ abstract class LoginSurfaceActivity : ComponentActivity() {
         primaryAction: LoginTopAction? = LoginTopAction.COMPLETE,
         onPrimaryAction: (() -> Unit)? = null,
     ) {
-        // Some console sites calculate their root height only once. Wait for AndroidView to be
-        // attached and measured before the initial navigation, otherwise h-full roots become 0px.
+        // Configure the WebView before Compose mounts it. Calling loadUrl does not require the
+        // view to be attached; waiting for attachment can leave a login page permanently blank
+        // on devices where AndroidView is laid out in a later frame.
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             loadsImagesAutomatically = true
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            javaScriptCanOpenWindowsAutomatically = true
+            setSupportMultipleWindows(false)
             userAgentString = userAgentString.replace("; wv", "")
         }
         webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
@@ -82,22 +83,6 @@ abstract class LoginSurfaceActivity : ComponentActivity() {
                 super.onProgressChanged(view, newProgress)
                 if (newProgress >= 70) ensureDocumentViewport(view)
             }
-        }
-        webView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(view: View) {
-                loginWebViewAttached = true
-                loginWebViewLaidOut = view.width > 0 && view.height > 0
-                flushPendingLoginUrl()
-            }
-
-            override fun onViewDetachedFromWindow(view: View) {
-                loginWebViewAttached = false
-                loginWebViewLaidOut = false
-            }
-        })
-        webView.addOnLayoutChangeListener { view, left, top, right, bottom, _, _, _, _ ->
-            loginWebViewLaidOut = right > left && bottom > top
-            if (loginWebViewLaidOut) flushPendingLoginUrl()
         }
         setContent {
             val style = DashboardPreferences.uiStyle(this@LoginSurfaceActivity)
@@ -121,24 +106,29 @@ abstract class LoginSurfaceActivity : ComponentActivity() {
         }
     }
 
-    /** Loads only after the WebView has a window, keeping all provider logins on one path. */
+    /** Queue navigation on the WebView looper without depending on Compose layout timing. */
     protected fun loadLoginUrl(url: String) {
         if (url.isBlank() || isFinishing || isDestroyed) return
-        pendingLoginUrl = url
-        if (loginWebViewAttached && loginWebViewLaidOut) flushPendingLoginUrl()
-    }
-
-    private fun flushPendingLoginUrl() {
-        val url = pendingLoginUrl ?: return
-        if (!loginWebViewAttached || !loginWebViewLaidOut || !webView.isAttachedToWindow) return
-        pendingLoginUrl = null
         webView.post {
-            if (!isFinishing && !isDestroyed && loginWebViewAttached && loginWebViewLaidOut && webView.isAttachedToWindow) {
+            if (!isFinishing && !isDestroyed) {
                 webView.loadUrl(url)
-            } else if (!isFinishing && !isDestroyed) {
-                pendingLoginUrl = url
             }
         }
+    }
+
+    /**
+     * Android WebView cookies are process-global. Clear them before starting a
+     * new service-card login so a second account cannot inherit the first card's
+     * session. The returned session is persisted only by that card's repository
+     * record after the platform-specific login completes.
+     */
+    protected fun clearLoginSessionData(onCleared: () -> Unit) {
+        if (isFinishing || isDestroyed) return
+        val finish = {
+            if (!isFinishing && !isDestroyed) onCleared()
+        }
+        WebStorage.getInstance().deleteAllData()
+        CookieManager.getInstance().removeAllCookies { finish() }
     }
 
     /**
@@ -184,7 +174,6 @@ abstract class LoginSurfaceActivity : ComponentActivity() {
 enum class LoginTopAction(val contentDescription: String) {
     COMPLETE("完成"),
     RETRY("重新加载"),
-    OPEN_CONSOLE("打开控制台"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -254,18 +243,14 @@ private fun LoginSurface(
 @Composable
 private fun LoginTopActionIcon(action: LoginTopAction, useMiuixIcon: Boolean = false) {
     when (action) {
-        LoginTopAction.COMPLETE -> Icon(Icons.Filled.Check, contentDescription = action.contentDescription)
+        LoginTopAction.COMPLETE -> Icon(Icons.Filled.Check, contentDescription = action.contentDescription, tint = MaterialTheme.colorScheme.onSurface)
         LoginTopAction.RETRY -> {
             if (useMiuixIcon) {
-                Icon(MiuixIcons.Regular.Refresh, contentDescription = action.contentDescription)
+                Icon(MiuixIcons.Regular.Refresh, contentDescription = action.contentDescription, tint = MaterialTheme.colorScheme.onSurface)
             } else {
-                Icon(painterResource(R.drawable.ic_refresh), contentDescription = action.contentDescription)
+                Icon(painterResource(R.drawable.ic_refresh), contentDescription = action.contentDescription, tint = MaterialTheme.colorScheme.onSurface)
             }
         }
-        LoginTopAction.OPEN_CONSOLE -> Icon(
-            painterResource(R.drawable.ic_open_in_browser),
-            contentDescription = action.contentDescription,
-        )
     }
 }
 

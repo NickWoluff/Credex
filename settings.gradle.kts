@@ -18,4 +18,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Credex"
-include(":codex-quota-companion")
+include(":credex")

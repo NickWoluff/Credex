@@ -31,10 +31,10 @@ __pycache__/
 *.py[cod]
 
 # Generated design previews
-codex-quota-companion/design/app-design-preview.png
-codex-quota-companion/design/widget-design-preview.png
-codex-quota-companion/design/widget-preview-2x2.png
-codex-quota-companion/design/widget-preview-4x2.png
+credex/design/app-design-preview.png
+credex/design/widget-design-preview.png
+credex/design/widget-preview-2x2.png
+credex/design/widget-preview-4x2.png
 
 # Local logs and temporary files
 *.log

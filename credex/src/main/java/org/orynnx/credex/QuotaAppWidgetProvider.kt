@@ -183,14 +183,23 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
             } else {
                 WidgetSelectionPreferences.get(context, appWidgetId)
             }
-            val allBalances = StandardBalanceRepository.forSurface(context, BalanceSurface.LAUNCHER, Int.MAX_VALUE)
-            val availableIds = allBalances.mapTo(mutableSetOf()) { it.id }
+            // Keep explicit widget selections stable even if a refresh temporarily marks a
+            // service as unavailable or its surface flags are being written. Rebuilding only
+            // from forSurface() made a refresh look like it had deleted the widget configuration.
+            val allBalances = StandardBalanceRepository.list(context)
+            val launcherBalances = allBalances.filter {
+                it.visible && BalanceSurface.LAUNCHER in it.displaySurfaces
+            }
             val codexAvailable = QuotaRepository.signedIn(context)
-            if (codexAvailable) availableIds += WidgetSelectionPreferences.CODEX_ID
-            val selected = configured.filter { it in availableIds }.ifEmpty {
+            // The widget's selection is an explicit user preference. Do not discard it merely
+            // because a service is currently disabled, unavailable, or Codex is signed out;
+            // doing so makes a refresh replace the chosen layout with a fallback service.
+            val selected = configured.filter { id ->
+                id == WidgetSelectionPreferences.CODEX_ID || allBalances.any { it.id == id }
+            }.ifEmpty {
                 buildList {
                     if (DashboardPreferences.showCodex(context) && codexAvailable) add(WidgetSelectionPreferences.CODEX_ID)
-                    if (isEmpty()) allBalances.firstOrNull()?.let { add(it.id) }
+                    if (isEmpty()) launcherBalances.firstOrNull()?.let { add(it.id) }
                 }
             }
             val byId = allBalances.associateBy(BalanceService::id)
@@ -462,14 +471,11 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
 
         private fun requestRefresh(context: Context, force: Boolean) {
             val appContext = context.applicationContext
-            val hasConnection = QuotaRepository.signedIn(appContext) || StandardBalanceRepository.hasAuthenticatedService(appContext)
-            if (!hasConnection) {
-                updateAll(appContext, QuotaState())
-                return
-            }
+            // Always render the cached state first. An offline refresh must never replace the
+            // selected services with an empty quota state or discard their visible values.
             updateAll(appContext, QuotaRepository.current(appContext), refreshing = true)
             if (!QuotaRefreshScheduler.requestImmediate(appContext, force)) {
-                updateAll(appContext)
+                updateAll(appContext, QuotaRepository.current(appContext))
             }
         }
 

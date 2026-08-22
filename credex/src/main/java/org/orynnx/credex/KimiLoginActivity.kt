@@ -35,7 +35,7 @@ class KimiLoginActivity : LoginSurfaceActivity() {
             primaryAction = LoginTopAction.RETRY,
             onPrimaryAction = { beginAuthorization(serviceId) },
         )
-        beginAuthorization(serviceId)
+        clearLoginSessionData { beginAuthorization(serviceId) }
     }
 
     override fun onDestroy() {

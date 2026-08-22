@@ -28,6 +28,7 @@ class QuotaProvider : ContentProvider() {
         appContext?.let(::scheduleRefresh)
         val state = appContext?.let(QuotaRepository::current) ?: QuotaState()
         val surface = when (match) {
+            DESKTOP -> BalanceSurface.MAML_DESKTOP
             ASSISTANT -> BalanceSurface.ASSISTANT_REAR
             WALLPAPER -> BalanceSurface.WALLPAPER_REAR
             else -> BalanceSurface.ASSISTANT_REAR // legacy packages keep their old behavior
@@ -96,12 +97,14 @@ class QuotaProvider : ContentProvider() {
     companion object {
         private const val AUTHORITY = "org.orynnx.credex"
         private const val QUOTA = 1
-        private const val ASSISTANT = 2
-        private const val WALLPAPER = 3
+        private const val DESKTOP = 2
+        private const val ASSISTANT = 3
+        private const val WALLPAPER = 4
         private const val BALANCE_SLOT_COUNT = 3
         private const val REFRESH_GATE_MS = 60_000L
         private val MATCHER = UriMatcher(UriMatcher.NO_MATCH).apply {
             addURI(AUTHORITY, "quota", QUOTA)
+            addURI(AUTHORITY, "quota/desktop", DESKTOP)
             addURI(AUTHORITY, "quota/assistant", ASSISTANT)
             addURI(AUTHORITY, "quota/wallpaper", WALLPAPER)
         }

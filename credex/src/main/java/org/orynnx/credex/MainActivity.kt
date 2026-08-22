@@ -1163,16 +1163,24 @@ open class MainActivity : ComponentActivity() {
                 show = true,
                 onDismissRequest = onDismissRequest,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // 先为底部操作区保留完整高度；长内容在剩余区域内滚动，避免按钮被
-                    // WindowDialog 的最大高度压缩到只剩背景而没有文字。
-                    Box(Modifier.weight(1f, fill = false)) { body() }
-                    if (singleAction) {
-                        Box(Modifier.fillMaxWidth()) { confirmButton() }
-                    } else {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Box(Modifier.weight(1f)) { dismissButton() }
-                            Box(Modifier.weight(1f)) { confirmButton() }
+                // Miuix 的 WindowDialog 不会为任意嵌入式 Compose 内容提供 Material 的
+                // LocalContentColor。用透明 Surface 显式建立主题前景色，避免深色模式下
+                // 表单、登录方式等未指定颜色的文字沿用黑色。
+                Surface(
+                    color = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // 先为底部操作区保留完整高度；长内容在剩余区域内滚动，避免按钮被
+                        // WindowDialog 的最大高度压缩到只剩背景而没有文字。
+                        Box(Modifier.weight(1f, fill = false)) { body() }
+                        if (singleAction) {
+                            Box(Modifier.fillMaxWidth()) { confirmButton() }
+                        } else {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Box(Modifier.weight(1f)) { dismissButton() }
+                                Box(Modifier.weight(1f)) { confirmButton() }
+                            }
                         }
                     }
                 }
@@ -2746,7 +2754,7 @@ open class MainActivity : ComponentActivity() {
                     )
                     when {
                         balanceAuthMode.usesBrowserLogin() -> {
-                            Text("登录方式：内置浏览器", style = MaterialTheme.typography.labelLarge)
+                            Text("登录方式：内置浏览器", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                             Text(
                                 when (platformBrand(balanceAuthMode)) {
                                     PlatformBrand.SILICON_FLOW -> "保存后会打开 SiliconFlow 控制台。请在页面内完成登录，应用会自动读取登录状态并返回。"
@@ -2758,10 +2766,10 @@ open class MainActivity : ComponentActivity() {
                             )
                         }
                         balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD -> {
-                            Text("登录方式：邮箱密码", style = MaterialTheme.typography.labelLarge)
+                            Text("登录方式：邮箱密码", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                         }
                         balanceAuthMode == BalanceAuthMode.API_KEY -> {
-                            Text("旧版 API Key 服务", style = MaterialTheme.typography.labelLarge)
+                            Text("旧版 API Key 服务", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                             Text(
                                 "此方式仅为兼容旧配置；新增 SiliconFlow 请使用控制台登录。",
                                 style = MaterialTheme.typography.bodySmall,
@@ -2769,7 +2777,7 @@ open class MainActivity : ComponentActivity() {
                             )
                         }
                         balanceAuthMode == BalanceAuthMode.KIMI -> {
-                            Text("登录方式：Kimi 官方授权", style = MaterialTheme.typography.labelLarge)
+                            Text("登录方式：Kimi 官方授权", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                             Text(
                                 "保存后会打开 Kimi 官方设备授权页；访问令牌和刷新令牌只会使用 Android Keystore 加密保存在本机。",
                                 style = MaterialTheme.typography.bodySmall,
@@ -2777,7 +2785,7 @@ open class MainActivity : ComponentActivity() {
                             )
                         }
                         balanceAuthMode.usesApiToken() -> {
-                            Text("登录方式：API Key", style = MaterialTheme.typography.labelLarge)
+                            Text("登录方式：API Key", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                             Text(
                                 "凭据只会使用 Android Keystore 加密保存，并通过平台官网接口读取余额或配额。",
                                 style = MaterialTheme.typography.bodySmall,
@@ -2952,7 +2960,7 @@ open class MainActivity : ComponentActivity() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Switch(checked = checked, onCheckedChange = onCheckedChange)
