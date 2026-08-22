@@ -31,6 +31,7 @@ __pycache__/
 *.py[cod]
 
 # Generated design previews
+credex/design/
 credex/design/app-design-preview.png
 credex/design/widget-design-preview.png
 credex/design/widget-preview-2x2.png
