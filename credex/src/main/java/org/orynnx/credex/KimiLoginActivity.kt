@@ -35,7 +35,7 @@ class KimiLoginActivity : LoginSurfaceActivity() {
             primaryAction = LoginTopAction.RETRY,
             onPrimaryAction = { beginAuthorization(serviceId) },
         )
-        clearLoginSessionData { beginAuthorization(serviceId) }
+        clearLoginSessionData(listOf("https://kimi.com", "https://www.kimi.com", "https://api.kimi.com", "https://auth.kimi.com")) { beginAuthorization(serviceId) }
     }
 
     override fun onDestroy() {

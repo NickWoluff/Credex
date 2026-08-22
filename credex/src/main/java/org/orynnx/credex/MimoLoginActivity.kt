@@ -68,7 +68,7 @@ class MimoLoginActivity : LoginSurfaceActivity() {
             primaryAction = LoginTopAction.RETRY,
             onPrimaryAction = { loadLoginPage(forceReload = true) },
         )
-        clearLoginSessionData { loadLoginPage(forceReload = false) }
+        clearLoginSessionData(listOf(ORIGIN, ACCOUNT_ORIGIN)) { loadLoginPage(forceReload = false) }
     }
 
     override fun onDestroy() {

@@ -55,7 +55,7 @@ class SiliconFlowLoginActivity : LoginSurfaceActivity() {
             primaryAction = LoginTopAction.RETRY,
             onPrimaryAction = { loadLoginUrl(webView.url?.takeIf { it.isNotBlank() } ?: SILICONFLOW_URL) },
         )
-        clearLoginSessionData { loadLoginUrl(SILICONFLOW_URL) }
+        clearLoginSessionData(listOf(SILICONFLOW_ORIGIN, SILICONFLOW_ACCOUNT_ORIGIN, SILICONFLOW_ROOT_ORIGIN)) { loadLoginUrl(SILICONFLOW_URL) }
     }
 
     override fun onDestroy() {

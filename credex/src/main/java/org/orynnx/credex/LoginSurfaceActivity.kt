@@ -36,6 +36,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
 import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
 import top.yukonga.miuix.kmp.basic.Scaffold as MiuixScaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar as MiuixTopAppBar
@@ -57,6 +58,11 @@ abstract class LoginSurfaceActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.navigationBarColor = Color.TRANSPARENT
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
     }
 
     protected fun showLoginSurface(
@@ -123,11 +129,16 @@ abstract class LoginSurfaceActivity : ComponentActivity() {
      * record after the platform-specific login completes.
      */
     protected fun clearLoginSessionData(onCleared: () -> Unit) {
+        clearLoginSessionData(emptyList(), onCleared)
+    }
+
+    /** Clear only the selected provider's WebStorage origins plus the shared cookie jar. */
+    protected fun clearLoginSessionData(origins: List<String>, onCleared: () -> Unit) {
         if (isFinishing || isDestroyed) return
         val finish = {
             if (!isFinishing && !isDestroyed) onCleared()
         }
-        WebStorage.getInstance().deleteAllData()
+        origins.distinct().forEach { origin -> WebStorage.getInstance().deleteOrigin(origin) }
         CookieManager.getInstance().removeAllCookies { finish() }
     }
 

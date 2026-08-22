@@ -138,6 +138,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
@@ -439,13 +440,11 @@ open class MainActivity : ComponentActivity() {
 
     /** Keep HyperOS' gesture handle over the app surface instead of reserving a solid nav bar. */
     private fun configureImmersiveNavigation() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
-        window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or
-            android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-            android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
     private val mimoLoginLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -1980,12 +1979,14 @@ open class MainActivity : ComponentActivity() {
             MiuixWindowBottomSheet(
                 show = true,
                 title = title,
+                defaultWindowInsetsPadding = false,
                 onDismissRequest = { showAddServices = false; addBrand = null },
             ) {
                 Column(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(max = 620.dp)
+                        .navigationBarsPadding()
                         .padding(bottom = 12.dp),
                 ) {
                     AddServicesBody()
@@ -2067,9 +2068,10 @@ open class MainActivity : ComponentActivity() {
             MiuixWindowBottomSheet(
                 show = true,
                 title = "背屏显示位置",
+                defaultWindowInsetsPadding = false,
                 onDismissRequest = dismiss,
             ) {
-                Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) { SurfaceRows() }
+                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 8.dp)) { SurfaceRows() }
             }
         } else {
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
