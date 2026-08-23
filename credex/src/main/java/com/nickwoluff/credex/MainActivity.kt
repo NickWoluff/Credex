@@ -12,7 +12,13 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.PowerManager
+import android.os.VibrationAttributes
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
+import android.view.HapticFeedbackConstants
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -226,10 +232,45 @@ private data class PageDataSnapshot(
 )
 
 private const val BOUNDARY_HAPTIC_THRESHOLD = 1f
+// HyperOS 2.0+ 的 Miuix 滚动组件在惯性滚动首次触边时使用该预烘焙线性马达效果。
+private const val XIAOMI_FLING_BOUNDARY_EFFECT_ID = 201
 
 private enum class FlingBoundary {
     TOP,
     BOTTOM,
+}
+
+private fun Context.performXiaomiFlingBoundaryHaptic(): Boolean {
+    if (!Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)) return false
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+
+    return runCatching {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(VibratorManager::class.java)?.defaultVibrator
+        } else {
+            getSystemService(Vibrator::class.java)
+        } ?: return false
+        if (!vibrator.hasVibrator()) return false
+
+        val effect = VibrationEffect.createPredefined(XIAOMI_FLING_BOUNDARY_EFFECT_ID)
+        val attributes = VibrationAttributes.Builder()
+            .setUsage(VibrationAttributes.USAGE_HARDWARE_FEEDBACK)
+            .build()
+        vibrator.vibrate(effect, attributes)
+        true
+    }.getOrDefault(false)
+}
+
+private fun View.performLightBoundaryHaptic() {
+    if (!isHapticFeedbackEnabled) return
+    if (context.performXiaomiFlingBoundaryHaptic()) return
+    performHapticFeedback(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            HapticFeedbackConstants.SEGMENT_FREQUENT_TICK
+        } else {
+            HapticFeedbackConstants.TEXT_HANDLE_MOVE
+        },
+    )
 }
 
 @Composable
@@ -237,10 +278,10 @@ private fun Modifier.verticalBoundaryHaptics(
     canScrollBackward: () -> Boolean,
     canScrollForward: () -> Boolean,
 ): Modifier {
-    val hapticFeedback = LocalHapticFeedback.current
+    val view = LocalView.current
     val currentCanScrollBackward by rememberUpdatedState(canScrollBackward)
     val currentCanScrollForward by rememberUpdatedState(canScrollForward)
-    val connection = remember(hapticFeedback) {
+    val connection = remember(view) {
         object : NestedScrollConnection {
             private var pendingBoundary: FlingBoundary? = null
 
@@ -261,7 +302,7 @@ private fun Modifier.verticalBoundaryHaptics(
                 }
                 pendingBoundary = null
                 if (reachedBoundary) {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                    view.performLightBoundaryHaptic()
                 }
                 return Velocity.Zero
             }
