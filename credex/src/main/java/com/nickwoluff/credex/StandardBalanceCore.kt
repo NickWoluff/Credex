@@ -114,12 +114,10 @@ enum class MaterialAccent { BLUE, PURPLE, GREEN, ORANGE, RED }
 
 enum class MaterialPaletteStyle { TONAL_SPOT, VIBRANT, EXPRESSIVE, NEUTRAL }
 
-/** A display host that can independently opt a balance service in or out. */
-enum class BalanceSurface(val shortLabel: String, val label: String) {
-    LAUNCHER("主屏", "Android 原生小部件"),
-    MAML_DESKTOP("桌面", "小米桌面 MAML"),
-    ASSISTANT_REAR("助手", "Assistant 背屏"),
-    WALLPAPER_REAR("壁纸", "Wallpaper 背屏"),
+/** The two rear-display hosts that can each show one selected balance service. */
+enum class RearDisplaySurface {
+    ASSISTANT,
+    WALLPAPER,
 }
 
 /** Credential-free presentation data used by the app UI. */
@@ -136,7 +134,6 @@ data class BalanceService(
     val status: String = "未登录",
     val health: BalanceHealth = BalanceHealth.NOT_CONNECTED,
     val visible: Boolean = true,
-    val displaySurfaces: Set<BalanceSurface> = BalanceSurface.values().toSet(),
     val includeVouchers: Boolean = false,
     val includeGrantedBalance: Boolean = true,
     val displayKind: BalanceDisplayKind = BalanceDisplayKind.AMOUNT,
@@ -189,6 +186,42 @@ object DashboardPreferences {
         runCatching { enumValueOf<T>(prefs(context).getString(key, fallback.name).orEmpty()) }.getOrDefault(fallback)
 }
 
+/** One selected balance service per rear-display host. */
+object RearDisplayPreferences {
+    private const val PREFS = "rear_display_preferences"
+    private const val ASSISTANT_SERVICE_ID = "assistant_service_id"
+    private const val WALLPAPER_SERVICE_ID = "wallpaper_service_id"
+
+    fun selectedServiceId(context: Context, surface: RearDisplaySurface): String =
+        prefs(context).getString(key(surface), "").orEmpty()
+
+    fun setSelectedService(context: Context, surface: RearDisplaySurface, serviceId: String) {
+        prefs(context).edit { putString(key(surface), serviceId) }
+    }
+
+    fun ensureDefaults(context: Context, services: List<BalanceService>) {
+        val firstVisibleId = services.firstOrNull { it.visible }?.id.orEmpty()
+        if (firstVisibleId.isBlank()) return
+        val visibleIds = services.filter { it.visible }.map(BalanceService::id).toSet()
+        val preferences = prefs(context)
+        preferences.edit {
+            if (preferences.getString(ASSISTANT_SERVICE_ID, "").orEmpty() !in visibleIds) {
+                putString(ASSISTANT_SERVICE_ID, firstVisibleId)
+            }
+            if (preferences.getString(WALLPAPER_SERVICE_ID, "").orEmpty() !in visibleIds) {
+                putString(WALLPAPER_SERVICE_ID, firstVisibleId)
+            }
+        }
+    }
+
+    private fun key(surface: RearDisplaySurface): String = when (surface) {
+        RearDisplaySurface.ASSISTANT -> ASSISTANT_SERVICE_ID
+        RearDisplaySurface.WALLPAPER -> WALLPAPER_SERVICE_ID
+    }
+
+    private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+}
+
 private data class StoredBalanceService(
     val id: String,
     val name: String,
@@ -209,7 +242,6 @@ private data class StoredBalanceService(
     val status: String = "未登录",
     val health: BalanceHealth = BalanceHealth.NOT_CONNECTED,
     val visible: Boolean = true,
-    val displaySurfaces: Set<BalanceSurface> = BalanceSurface.values().toSet(),
     val includeVouchers: Boolean = false,
     val includeGrantedBalance: Boolean = true,
     val displayKind: BalanceDisplayKind = BalanceDisplayKind.AMOUNT,
@@ -232,7 +264,6 @@ private data class StoredBalanceService(
         status = status,
         health = health,
         visible = visible,
-        displaySurfaces = displaySurfaces,
         includeVouchers = includeVouchers,
         includeGrantedBalance = includeGrantedBalance,
         displayKind = displayKind,
@@ -263,7 +294,6 @@ private data class StoredBalanceService(
         put("status", status)
         put("health", health.name)
         put("visible", visible)
-        put("display_surfaces", JSONArray().apply { displaySurfaces.forEach { put(it.name) } })
         put("include_vouchers", includeVouchers)
         put("include_granted_balance", includeGrantedBalance)
         put("display_kind", displayKind.name)
@@ -310,7 +340,6 @@ private data class StoredBalanceService(
                 status = json.optString("status", "未登录"),
                 health = health,
                 visible = json.optBoolean("visible", true),
-                displaySurfaces = readDisplaySurfaces(json),
                 includeVouchers = json.optBoolean("include_vouchers", false),
                 includeGrantedBalance = json.optBoolean("include_granted_balance", true),
                 displayKind = runCatching { BalanceDisplayKind.valueOf(json.optString("display_kind")) }
@@ -336,15 +365,6 @@ private data class StoredBalanceService(
             )
         }
 
-        private fun readDisplaySurfaces(json: JSONObject): Set<BalanceSurface> {
-            // Existing installations predate per-surface settings; keep their
-            // services visible everywhere until the user changes a setting.
-            if (!json.has("display_surfaces")) return BalanceSurface.values().toSet()
-            val array = json.optJSONArray("display_surfaces") ?: return emptySet()
-            return (0 until array.length()).mapNotNull { index ->
-                runCatching { BalanceSurface.valueOf(array.optString(index)) }.getOrNull()
-            }.toSet()
-        }
     }
 }
 
@@ -404,10 +424,14 @@ object StandardBalanceRepository {
     fun list(context: Context): List<BalanceService> = stored(context, decryptSecrets = false)
         .map { it.public() }
 
-    fun forSurface(context: Context, surface: BalanceSurface, limit: Int): List<BalanceService> =
-        list(context)
-            .filter { it.visible && surface in it.displaySurfaces }
+    fun forRearSurface(context: Context, surface: RearDisplaySurface, limit: Int): List<BalanceService> {
+        val services = list(context)
+        RearDisplayPreferences.ensureDefaults(context, services)
+        val selectedId = RearDisplayPreferences.selectedServiceId(context, surface)
+        return services
+            .filter { it.visible && it.id == selectedId }
             .take(limit.coerceAtLeast(0))
+    }
 
     fun hasConfiguredService(context: Context): Boolean = stored(context, decryptSecrets = false).isNotEmpty()
 
@@ -443,16 +467,6 @@ object StandardBalanceRepository {
 
     fun setVisible(context: Context, id: String, visible: Boolean) {
         stored(context).firstOrNull { it.id == id }?.let { replace(context, it.copy(visible = visible)) }
-        notifyChanged(context)
-    }
-
-    fun setSurfaceEnabled(context: Context, id: String, surface: BalanceSurface, enabled: Boolean) {
-        stored(context).firstOrNull { it.id == id }?.let { service ->
-            val next = service.displaySurfaces.toMutableSet().apply {
-                if (enabled) add(surface) else remove(surface)
-            }
-            replace(context, service.copy(displaySurfaces = next))
-        }
         notifyChanged(context)
     }
 

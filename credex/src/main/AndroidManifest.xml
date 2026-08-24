@@ -27,6 +27,8 @@
         <activity android:name=".SettingsActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".WidgetSettingsActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".WidgetUiSettingsActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".RearDisplaySettingsActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".VersionActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".ThemeSettingsActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".AboutActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".ProjectsActivity" android:exported="false" android:screenOrientation="portrait" />

@@ -28,13 +28,12 @@ class QuotaProvider : ContentProvider() {
         appContext?.let(::scheduleRefresh)
         val state = appContext?.let(QuotaRepository::current) ?: QuotaState()
         val surface = when (match) {
-            DESKTOP -> BalanceSurface.MAML_DESKTOP
-            ASSISTANT -> BalanceSurface.ASSISTANT_REAR
-            WALLPAPER -> BalanceSurface.WALLPAPER_REAR
-            else -> BalanceSurface.ASSISTANT_REAR // legacy packages keep their old behavior
+            ASSISTANT -> RearDisplaySurface.ASSISTANT
+            WALLPAPER -> RearDisplaySurface.WALLPAPER
+            else -> error("Unsupported URI: $uri")
         }
         val balances = appContext?.let {
-            StandardBalanceRepository.forSurface(it, surface, BALANCE_SLOT_COUNT)
+            StandardBalanceRepository.forRearSurface(it, surface, BALANCE_SLOT_COUNT)
         }.orEmpty()
         return MatrixCursor(COLUMNS).apply {
             val row = ArrayList<Any>(COLUMNS.size)
@@ -96,15 +95,11 @@ class QuotaProvider : ContentProvider() {
 
     companion object {
         private const val AUTHORITY = "com.nickwoluff.credex"
-        private const val QUOTA = 1
-        private const val DESKTOP = 2
-        private const val ASSISTANT = 3
-        private const val WALLPAPER = 4
+        private const val ASSISTANT = 1
+        private const val WALLPAPER = 2
         private const val BALANCE_SLOT_COUNT = 3
         private const val REFRESH_GATE_MS = 60_000L
         private val MATCHER = UriMatcher(UriMatcher.NO_MATCH).apply {
-            addURI(AUTHORITY, "quota", QUOTA)
-            addURI(AUTHORITY, "quota/desktop", DESKTOP)
             addURI(AUTHORITY, "quota/assistant", ASSISTANT)
             addURI(AUTHORITY, "quota/wallpaper", WALLPAPER)
         }

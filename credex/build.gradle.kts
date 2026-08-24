@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
-val credexVersionName = "1.0.0"
+val credexVersionName = "1.0.1"
 
 plugins {
     alias(libs.plugins.android.application)
@@ -18,7 +18,7 @@ android {
         applicationId = "com.nickwoluff.credex"
         minSdk = 29
         targetSdk = 37
-        versionCode = 12
+        versionCode = 13
         versionName = credexVersionName
     }
     buildFeatures { compose = true; buildConfig = true }

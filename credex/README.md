@@ -8,7 +8,7 @@ Credex Android 应用用于集中查看多个 AI 服务的账户余额和配额�
 - DeepSeek、SiliconFlow、Xiaomi MIMO、火山引擎、OpenCode、Kimi、GLM：依服务商能力展示账户余额或各类 Plan 配额。
 - 自定义接口：使用用户提供的标准余额接口。
 
-服务可独立启用、排序和配置显示位置。Plan 服务可选择展示已使用或剩余配额。
+服务可独立启用和排序；背屏服务在“设置 > 背屏配置”中分别为 Assistant 与 Wallpaper 选择一个展示服务。Plan 服务可选择展示已使用或剩余配额。
 
 ## 小部件与刷新
 
@@ -16,7 +16,7 @@ Android 桌面小部件支持主服务和可选副服务，可在应用的“小
 
 ## 数据安全
 
-登录会话、访问令牌和 API Key 仅保存于 Android Keystore 加密存储。导出的 `content://com.nickwoluff.credex/quota` Provider 仅提供展示字段，不包含令牌、账号标识或原始响应。
+登录会话、访问令牌和 API Key 仅保存于 Android Keystore 加密存储。导出的 Assistant/Wallpaper Provider 仅提供展示字段，不包含令牌、账号标识或原始响应。
 
 ## 构建
 

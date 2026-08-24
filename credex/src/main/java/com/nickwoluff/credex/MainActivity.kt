@@ -17,6 +17,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.widget.Toast
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.activity.ComponentActivity
@@ -74,8 +75,41 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Compress
+import androidx.compose.material.icons.filled.DataUsage
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ForkRight
+import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Source
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Update
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -93,7 +127,7 @@ import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.ListItem
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.NavigationBar
@@ -110,6 +144,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState as rememberMaterialTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -127,6 +162,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -174,7 +210,6 @@ import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.window.WindowDialog as MiuixWindowDialog
 import top.yukonga.miuix.kmp.window.WindowBottomSheet as MiuixWindowBottomSheet
 import top.yukonga.miuix.kmp.preference.ArrowPreference as MiuixArrowPreference
-import top.yukonga.miuix.kmp.preference.CheckboxPreference as MiuixCheckboxPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference as MiuixOverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference as MiuixSwitchPreference
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -203,6 +238,8 @@ private enum class ActivityPage(val value: String) {
     SETTINGS("settings"),
     WIDGET_SETTINGS("widget-settings"),
     WIDGET_UI_SETTINGS("widget-ui-settings"),
+    REAR_DISPLAY_SETTINGS("rear-display-settings"),
+    VERSION("version"),
     THEME_SETTINGS("theme-settings"),
     ABOUT("about"),
     PROJECTS("projects"),
@@ -354,7 +391,8 @@ open class MainActivity : ComponentActivity() {
     private var selectedTab by mutableStateOf(AppTab.HOME)
     private var showAddServices by mutableStateOf(false)
     private var addBrand by mutableStateOf<AddBrand?>(null)
-    private var editingDisplaySurfacesServiceId by mutableStateOf<String?>(null)
+    private var showRearDisplaySettings by mutableStateOf(false)
+    private var showVersionPage by mutableStateOf(false)
     private var selectedConfigBrand by mutableStateOf<String?>(null)
     private var serviceRunning by mutableStateOf(false)
 
@@ -390,12 +428,17 @@ open class MainActivity : ComponentActivity() {
     private var widgetTokenUnitSystem by mutableStateOf(WidgetTokenUnitSystem.DECIMAL)
     private var widgetHeightInput by mutableStateOf("")
     private var widgetVerticalOffset by mutableIntStateOf(0)
+    private var rearAssistantServiceId by mutableStateOf("")
+    private var rearWallpaperServiceId by mutableStateOf("")
+    private var autoUpdateCheck by mutableStateOf(true)
+    private var availableUpdate by mutableStateOf<AvailableUpdate?>(null)
+    private var checkingForUpdate by mutableStateOf(false)
+    private var updateCheckStarted = false
     private var receiverRegistered = false
     private var observerRegistered = false
     private var firstStart = true
     private var pageContentReady by mutableStateOf(false)
 
-    private val quotaUri = "content://com.nickwoluff.credex/quota".toUri()
     private val quotaObserver by lazy {
         object : ContentObserver(Handler(mainLooper)) {
             override fun onChange(selfChange: Boolean) {
@@ -490,6 +533,8 @@ open class MainActivity : ComponentActivity() {
             ActivityPage.SETTINGS -> showSettings = true
             ActivityPage.WIDGET_SETTINGS -> showWidgetSettings = true
             ActivityPage.WIDGET_UI_SETTINGS -> showWidgetUiSettings = true
+            ActivityPage.REAR_DISPLAY_SETTINGS -> showRearDisplaySettings = true
+            ActivityPage.VERSION -> showVersionPage = true
             ActivityPage.THEME_SETTINGS -> showThemeSettings = true
             ActivityPage.ABOUT -> showAbout = true
             ActivityPage.PROJECTS -> showProjects = true
@@ -513,8 +558,9 @@ open class MainActivity : ComponentActivity() {
                 applyPageData(readPageData(activityPage))
                 pageContentReady = true
             }
-            ActivityPage.THEME_SETTINGS -> pageContentReady = true
-            ActivityPage.SETTINGS, ActivityPage.WIDGET_SETTINGS, ActivityPage.WIDGET_UI_SETTINGS, ActivityPage.ABOUT,
+            ActivityPage.THEME_SETTINGS, ActivityPage.VERSION -> pageContentReady = true
+            ActivityPage.SETTINGS, ActivityPage.WIDGET_SETTINGS, ActivityPage.WIDGET_UI_SETTINGS,
+            ActivityPage.REAR_DISPLAY_SETTINGS, ActivityPage.ABOUT,
             ActivityPage.PROJECTS, ActivityPage.REFERENCES, ActivityPage.HELP, ActivityPage.DISCLAIMER,
             ActivityPage.CONFIGURATION -> Unit
         }
@@ -540,7 +586,7 @@ open class MainActivity : ComponentActivity() {
                 if (showBalanceEditor) BalanceServiceEditorDialog()
                 if (deletingBalanceServiceId != null) DeleteBalanceServiceDialog()
                 if (showAddServices) AddServicesDialog()
-                if (editingDisplaySurfacesServiceId != null) DisplaySurfacePickerSheet()
+                availableUpdate?.let { UpdateDialog(it) }
             }
         }
         if (activityPage == ActivityPage.ROOT && backgroundEnabled) {
@@ -549,6 +595,10 @@ open class MainActivity : ComponentActivity() {
                     prepareLiveSync()
                 }
             }
+        }
+        if (activityPage == ActivityPage.ROOT && autoUpdateCheck && !updateCheckStarted) {
+            updateCheckStarted = true
+            window.decorView.post { checkForUpdate(manual = false) }
         }
         if (!pageContentReady) loadPageStateAsync()
     }
@@ -636,7 +686,7 @@ open class MainActivity : ComponentActivity() {
         if (firstStart) firstStart = false else loadPageState()
         if (serviceRunning && message == "持续同步正在启动") message = ""
         if (activityPage == ActivityPage.ROOT) {
-            contentResolver.registerContentObserver(quotaUri, true, quotaObserver)
+            contentResolver.registerContentObserver(QuotaDisplayContract.assistantUri, true, quotaObserver)
             observerRegistered = true
         }
         if (activityPage == ActivityPage.ROOT || activityPage == ActivityPage.SETTINGS) {
@@ -694,12 +744,14 @@ open class MainActivity : ComponentActivity() {
         val isDisclaimer = showDisclaimer
         val isSettings = showSettings && !isThemeSettings
         val isDetail = detailBrand != null
-        val isSecondaryPage = isSettings || isThemeSettings || isWidgetSettings || isWidgetUiSettings ||
+        val isSecondaryPage = isSettings || isThemeSettings || isWidgetSettings || isWidgetUiSettings || showRearDisplaySettings || showVersionPage ||
             isAbout || isReferences || isHelp || isDisclaimer || isDetail
             || isProjects
         val pageKey = when {
             isWidgetUiSettings -> "widget-ui-settings"
             isWidgetSettings -> "widget-settings"
+            showRearDisplaySettings -> "rear-display-settings"
+            showVersionPage -> "version"
             isThemeSettings -> "theme-settings"
             isAbout -> "about"
             isProjects -> "projects"
@@ -717,6 +769,8 @@ open class MainActivity : ComponentActivity() {
                 isThemeSettings,
                 isWidgetSettings,
                 isWidgetUiSettings,
+                showRearDisplaySettings,
+                showVersionPage,
                 isAbout,
                 isProjects,
                 isReferences,
@@ -738,7 +792,7 @@ open class MainActivity : ComponentActivity() {
                     navigationIcon = {
                         when {
                             isSecondaryPage -> IconButton(onClick = { finish() }) {
-                                Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "返回")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                             }
                             selectedTab == AppTab.HOME -> IconButton(onClick = ::refresh, enabled = !refreshing) {
                                 RefreshIcon()
@@ -750,6 +804,8 @@ open class MainActivity : ComponentActivity() {
                             isSettings -> "设置"
                             isWidgetSettings -> "小部件配置"
                             isWidgetUiSettings -> "自定义小部件卡片"
+                            showRearDisplaySettings -> "背屏配置"
+                            showVersionPage -> "版本"
                             isThemeSettings -> "主题设置"
                             isAbout -> "关于"
                             isProjects -> "项目地址"
@@ -764,10 +820,10 @@ open class MainActivity : ComponentActivity() {
                     actions = {
                         if (!isSecondaryPage) {
                             IconButton(onClick = { showAddServices = true }) {
-                                Icon(painterResource(R.drawable.ic_add), contentDescription = "添加服务")
+                                Icon(Icons.Filled.Add, contentDescription = "添加服务")
                             }
                             IconButton(onClick = { openActivityPage(ActivityPage.SETTINGS) }) {
-                                Icon(painterResource(R.drawable.ic_settings), contentDescription = "设置")
+                                Icon(Icons.Filled.Settings, contentDescription = "设置")
                             }
                         }
                     },
@@ -787,7 +843,7 @@ open class MainActivity : ComponentActivity() {
                         NavigationBarItem(
                             selected = pagerState.currentPage == AppTab.HOME.ordinal,
                             onClick = { selectTab(AppTab.HOME) },
-                            icon = { Icon(painterResource(R.drawable.ic_home), contentDescription = "视图") },
+                            icon = { Icon(Icons.Filled.Home, contentDescription = "视图") },
                             label = { Text("视图") },
                         )
                         NavigationBarItem(
@@ -809,6 +865,8 @@ open class MainActivity : ComponentActivity() {
                 isThemeSettings -> ThemeSettingsScreen(contentModifier)
                 isWidgetSettings -> WidgetSettingsScreen(contentModifier)
                 isWidgetUiSettings -> WidgetUiSettingsScreen(contentModifier)
+                showRearDisplaySettings -> RearDisplaySettingsScreen(contentModifier)
+                showVersionPage -> VersionScreen(contentModifier)
                 isSettings -> SettingsScreen(contentModifier)
                 isAbout -> AboutScreen(contentModifier)
                 isProjects -> ProjectsScreen(contentModifier)
@@ -834,6 +892,8 @@ open class MainActivity : ComponentActivity() {
         isThemeSettings: Boolean,
         isWidgetSettings: Boolean,
         isWidgetUiSettings: Boolean,
+        isRearDisplaySettings: Boolean,
+        isVersion: Boolean,
         isAbout: Boolean,
         isProjects: Boolean,
         isReferences: Boolean,
@@ -846,6 +906,8 @@ open class MainActivity : ComponentActivity() {
         val pageKey = when {
             isWidgetUiSettings -> "widget-ui-settings"
             isWidgetSettings -> "widget-settings"
+            isRearDisplaySettings -> "rear-display-settings"
+            isVersion -> "version"
             isThemeSettings -> "theme-settings"
             isAbout -> "about"
             isProjects -> "projects"
@@ -861,7 +923,7 @@ open class MainActivity : ComponentActivity() {
         )
         val backdrop = rememberMiuixBlurBackdrop()
         val blurAvailable = miuixBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-        val isSecondaryPage = isSettings || isThemeSettings || isWidgetSettings || isWidgetUiSettings ||
+        val isSecondaryPage = isSettings || isThemeSettings || isWidgetSettings || isWidgetUiSettings || isRearDisplaySettings || isVersion ||
             isAbout || isReferences || isHelp || isDisclaimer || isDetail
             || isProjects
         val barColor = MiuixTheme.colorScheme.surface.copy(alpha = if (blurAvailable) 0.48f else 1f)
@@ -886,6 +948,8 @@ open class MainActivity : ComponentActivity() {
                             isThemeSettings -> "主题设置"
                             isWidgetSettings -> "小部件配置"
                             isWidgetUiSettings -> "自定义小部件卡片"
+                            isRearDisplaySettings -> "背屏配置"
+                            isVersion -> "版本更新"
                             isSettings -> "设置"
                             isAbout -> "关于"
                             isProjects -> "项目地址"
@@ -900,6 +964,8 @@ open class MainActivity : ComponentActivity() {
                             isThemeSettings -> "主题设置"
                             isWidgetSettings -> "小部件配置"
                             isWidgetUiSettings -> "自定义小部件卡片"
+                            isRearDisplaySettings -> "背屏配置"
+                            isVersion -> "版本更新"
                             isSettings -> "设置"
                             isProjects -> "项目地址"
                             isAbout -> "关于"
@@ -981,6 +1047,8 @@ open class MainActivity : ComponentActivity() {
                     isThemeSettings -> ThemeSettingsScreen(contentModifier)
                     isWidgetSettings -> WidgetSettingsScreen(contentModifier)
                     isWidgetUiSettings -> WidgetUiSettingsScreen(contentModifier)
+                    isRearDisplaySettings -> RearDisplaySettingsScreen(contentModifier)
+                    isVersion -> VersionScreen(contentModifier)
                     isSettings -> SettingsScreen(contentModifier)
                     isAbout -> AboutScreen(contentModifier)
                     isProjects -> ProjectsScreen(contentModifier)
@@ -1044,7 +1112,7 @@ open class MainActivity : ComponentActivity() {
         )
         val modifier = Modifier.rotate(if (refreshing) rotation else 0f)
         if (miuix) Icon(MiuixIcons.Regular.Refresh, contentDescription = "刷新", modifier = modifier)
-        else Icon(painterResource(R.drawable.ic_refresh), contentDescription = "刷新", modifier = modifier)
+        else Icon(Icons.Filled.Refresh, contentDescription = "刷新", modifier = modifier)
     }
 
     @Composable
@@ -1209,6 +1277,8 @@ open class MainActivity : ComponentActivity() {
         subtitle: String,
         checked: Boolean,
         onCheckedChange: (Boolean) -> Unit,
+        showLeadingIcon: Boolean = true,
+        leadingIcon: ImageVector? = null,
     ) {
         if (uiStyle == UiStyle.MIUIX) {
             MiuixSwitchPreference(
@@ -1229,17 +1299,20 @@ open class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.extraSmall,
                 color = materialCardColor(),
+                contentColor = MaterialTheme.colorScheme.onSurface,
             ) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        painterResource(defaultListIcon(title)),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(24.dp),
-                    )
-                    Spacer(Modifier.width(16.dp))
+                    if (showLeadingIcon) {
+                        Icon(
+                            leadingIcon ?: defaultListIcon(title),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp),
+                        )
+                        Spacer(Modifier.width(16.dp))
+                    }
                     Column(Modifier.weight(1f)) {
-                        Text(title, style = MaterialTheme.typography.titleMedium)
+                        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(checked = checked, onCheckedChange = materialOnCheckedChange)
@@ -1645,15 +1718,6 @@ open class MainActivity : ComponentActivity() {
                             loadBalanceServices()
                         },
                     )
-                    SettingsActionRow(
-                        icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
-                        title = "背屏显示位置",
-                        subtitle = service.displaySurfaces
-                            .map(BalanceSurface::shortLabel)
-                            .ifEmpty { listOf("未选择") }
-                            .joinToString("、"),
-                        onClick = { editingDisplaySurfacesServiceId = service.id },
-                    )
                     if (service.displayKind == BalanceDisplayKind.TOKEN_PLAN) {
                         SettingsSwitchRow(
                             title = "展示剩余配额",
@@ -1908,7 +1972,7 @@ open class MainActivity : ComponentActivity() {
                     )
                     SettingsDivider()
                     SettingsActionRow(
-                        icon = { Icon(painterResource(R.drawable.ic_refresh), null) },
+                        icon = { Icon(Icons.Filled.Refresh, null) },
                         title = "重新授权",
                         subtitle = "在 Codex 服务中更新 OpenAI 登录",
                         onClick = {
@@ -1917,7 +1981,7 @@ open class MainActivity : ComponentActivity() {
                     )
                     SettingsDivider()
                     SettingsActionRow(
-                        icon = { Icon(painterResource(R.drawable.ic_shield), null) },
+                        icon = { Icon(Icons.Filled.Security, null) },
                         title = "隐私与凭证",
                         subtitle = "OAuth 凭证由 Android Keystore 加密",
                         onClick = null,
@@ -2114,101 +2178,6 @@ open class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun DisplaySurfacePickerSheet() {
-        val serviceId = editingDisplaySurfacesServiceId ?: return
-        val service = balanceServices.firstOrNull { it.id == serviceId } ?: run {
-            editingDisplaySurfacesServiceId = null
-            return
-        }
-        val dismiss = { editingDisplaySurfacesServiceId = null }
-
-        @Composable
-        fun SurfaceRows() {
-            val surfaces = BalanceSurface.values()
-            if (uiStyle == UiStyle.MIUIX) {
-                MiuixCard(modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        surfaces.forEach { surface ->
-                            val checked = surface in service.displaySurfaces
-                            MiuixCheckboxPreference(
-                                title = surface.shortLabel,
-                                summary = surface.label,
-                                checked = checked,
-                                checkboxLocation = top.yukonga.miuix.kmp.preference.CheckboxLocation.End,
-                                onCheckedChange = {
-                                    StandardBalanceRepository.setSurfaceEnabled(
-                                        this@MainActivity,
-                                        service.id,
-                                        surface,
-                                        !checked,
-                                    )
-                                    loadBalanceServices()
-                                },
-                            )
-                        }
-                    }
-                }
-                return
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                surfaces.forEachIndexed { index, surface ->
-                    val checked = surface in service.displaySurfaces
-                    val update = {
-                        StandardBalanceRepository.setSurfaceEnabled(this@MainActivity, service.id, surface, !checked)
-                        loadBalanceServices()
-                    }
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().clickable(onClick = update),
-                        shape = groupedMaterialShape(index, surfaces.size),
-                        color = materialCardColor(),
-                    ) {
-                        Row(
-                            Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(surface.shortLabel, style = MaterialTheme.typography.titleMedium)
-                                Text(surface.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Checkbox(checked = checked, onCheckedChange = { update() })
-                        }
-                    }
-                }
-            }
-        }
-
-        if (uiStyle == UiStyle.MIUIX) {
-            MiuixWindowBottomSheet(
-                show = true,
-                title = "背屏显示位置",
-                defaultWindowInsetsPadding = false,
-                onDismissRequest = dismiss,
-            ) {
-                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 8.dp)) { SurfaceRows() }
-            }
-        } else {
-            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-            ModalBottomSheet(
-                onDismissRequest = dismiss,
-                sheetState = sheetState,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                ) {
-                    Text("背屏显示位置", style = MaterialTheme.typography.headlineSmall)
-                    Spacer(Modifier.height(16.dp))
-                    SurfaceRows()
-                    Spacer(Modifier.height(12.dp))
-                }
-            }
-        }
-    }
-
-    @Composable
     private fun AddBrandOption(title: String, subtitle: String, brand: AddBrand, index: Int, total: Int) {
         val platform = when (brand) {
             AddBrand.CODEX -> PlatformBrand.OPENAI_CODEX
@@ -2247,10 +2216,14 @@ open class MainActivity : ComponentActivity() {
                     Spacer(Modifier.width(12.dp))
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null)
+                Icon(
+                    Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -2305,10 +2278,19 @@ open class MainActivity : ComponentActivity() {
 
             SettingsSection("小部件") {
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_widget), contentDescription = null) },
+                    icon = { Icon(Icons.Filled.Widgets, contentDescription = null) },
                     title = "小部件配置",
-                    subtitle = "服务与自定义界面",
+                    subtitle = "小部件服务配置与自定义界面",
                     onClick = { openActivityPage(ActivityPage.WIDGET_SETTINGS) },
+                )
+            }
+
+            SettingsSection("背屏") {
+                SettingsActionRow(
+                    icon = { Icon(Icons.Filled.Visibility, contentDescription = null) },
+                    title = "背屏配置",
+                    subtitle = "背屏服务配置",
+                    onClick = { openActivityPage(ActivityPage.REAR_DISPLAY_SETTINGS) },
                 )
             }
 
@@ -2316,7 +2298,7 @@ open class MainActivity : ComponentActivity() {
                 StyleSelectionPreference()
                 SettingsDivider()
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
+                    icon = { Icon(Icons.Filled.Palette, contentDescription = null) },
                     title = "主题设置",
                     subtitle = themeModeLabel(themeMode),
                     onClick = { openActivityPage(ActivityPage.THEME_SETTINGS) },
@@ -2365,7 +2347,7 @@ open class MainActivity : ComponentActivity() {
                 )
                 SettingsDivider()
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_notifications), null) },
+                    icon = { Icon(Icons.Filled.Notifications, null) },
                     title = "通知",
                     subtitle = when {
                         !notificationSyncEnabled -> "常驻通知已关闭"
@@ -2376,7 +2358,7 @@ open class MainActivity : ComponentActivity() {
                 )
                 SettingsDivider()
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_battery), null) },
+                    icon = { Icon(Icons.Filled.BatteryChargingFull, null) },
                     title = "后台与电池",
                     subtitle = if (batteryUnrestricted) "不受电池优化限制" else "可能受系统限制",
                     onClick = ::openAppSettings,
@@ -2385,12 +2367,70 @@ open class MainActivity : ComponentActivity() {
 
             SettingsSection("更多") {
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    icon = { Icon(Icons.Filled.Info, null) },
                     title = "关于",
                     onClick = { openActivityPage(ActivityPage.ABOUT) },
                 )
             }
 
+        }
+    }
+
+    @Composable
+    private fun RearDisplaySettingsScreen(modifier: Modifier = Modifier) {
+        val options = balanceServices.filter { it.visible }
+        val optionLabels = options.map(BalanceService::name)
+        val assistantIndex = options.indexOfFirst { it.id == rearAssistantServiceId }.coerceAtLeast(0)
+        val wallpaperIndex = options.indexOfFirst { it.id == rearWallpaperServiceId }.coerceAtLeast(0)
+        Column(
+            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SettingsCard {
+                if (options.isEmpty()) {
+                    SettingsActionRow(
+                        icon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
+                        title = "背屏服务",
+                        subtitle = "未添加可用服务",
+                        onClick = null,
+                        showChevron = false,
+                    )
+                } else {
+                    DropdownSelectionPreference(
+                        title = "助手",
+                        summary = options.getOrNull(assistantIndex)?.name.orEmpty(),
+                        subtitle = "Assistant 背屏显示的服务",
+                        items = optionLabels,
+                        selectedIndex = assistantIndex,
+                        onSelected = { index ->
+                            rearAssistantServiceId = options.getOrNull(index)?.id.orEmpty()
+                            RearDisplayPreferences.setSelectedService(
+                                this@MainActivity,
+                                RearDisplaySurface.ASSISTANT,
+                                rearAssistantServiceId,
+                            )
+                            QuotaDisplayContract.notifyAll(this@MainActivity)
+                        },
+                    )
+                    SettingsDivider()
+                    DropdownSelectionPreference(
+                        title = "壁纸",
+                        summary = options.getOrNull(wallpaperIndex)?.name.orEmpty(),
+                        subtitle = "Wallpaper 背屏显示的服务",
+                        items = optionLabels,
+                        selectedIndex = wallpaperIndex,
+                        onSelected = { index ->
+                            rearWallpaperServiceId = options.getOrNull(index)?.id.orEmpty()
+                            RearDisplayPreferences.setSelectedService(
+                                this@MainActivity,
+                                RearDisplaySurface.WALLPAPER,
+                                rearWallpaperServiceId,
+                            )
+                            QuotaDisplayContract.notifyAll(this@MainActivity)
+                        },
+                    )
+                }
+            }
         }
     }
 
@@ -2408,7 +2448,7 @@ open class MainActivity : ComponentActivity() {
             SettingsCard {
                 if (!hasWidgetServices) {
                     SettingsActionRow(
-                        icon = { Icon(painterResource(R.drawable.ic_widget), contentDescription = null) },
+                        icon = { Icon(Icons.Filled.Widgets, contentDescription = null) },
                         title = "主服务",
                         subtitle = "未添加服务",
                         onClick = null,
@@ -2477,7 +2517,7 @@ open class MainActivity : ComponentActivity() {
                 }
                 SettingsDivider()
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
+                    icon = { Icon(Icons.Filled.Tune, contentDescription = null) },
                     title = "自定义小部件卡片",
                     subtitle = "高度、上下偏移",
                     onClick = { openActivityPage(ActivityPage.WIDGET_UI_SETTINGS) },
@@ -2581,8 +2621,13 @@ open class MainActivity : ComponentActivity() {
                     contentScale = ContentScale.Fit,
                 )
             }
-            SettingsSection("关于") {
-                SettingsValueRow("Credex 版本", BuildConfig.VERSION_NAME)
+            SettingsSection("版本") {
+                SettingsActionRow(
+                    icon = { Icon(Icons.Filled.SystemUpdate, null) },
+                    title = "版本更新",
+                    onClick = { openActivityPage(ActivityPage.VERSION) },
+                    trailingText = BuildConfig.VERSION_NAME,
+                )
             }
             SettingsSection("开发者") {
                 SettingsActionRow(
@@ -2607,26 +2652,26 @@ open class MainActivity : ComponentActivity() {
             }
             SettingsSection("项目与支持") {
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    icon = { Icon(Icons.Filled.OpenInBrowser, null) },
                     title = "官方网站",
                     subtitle = "credex.nickwoluff.com",
                     onClick = { openExternalUrl("https://credex.nickwoluff.com") },
                 )
                 SettingsDivider()
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    icon = { Icon(Icons.Filled.Code, null) },
                     title = "项目地址",
                     onClick = { openActivityPage(ActivityPage.PROJECTS) },
                 )
                 SettingsDivider()
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    icon = { Icon(Icons.Filled.FormatQuote, null) },
                     title = "引用",
                     onClick = { openActivityPage(ActivityPage.REFERENCES) },
                 )
                 SettingsDivider()
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    icon = { Icon(Icons.AutoMirrored.Filled.Help, null) },
                     title = "帮助",
                     onClick = { openActivityPage(ActivityPage.HELP) },
                 )
@@ -2642,6 +2687,57 @@ open class MainActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun VersionScreen(modifier: Modifier = Modifier) {
+        Column(
+            modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            SettingsSection("当前") {
+                SettingsValueRow("Credex 版本", BuildConfig.VERSION_NAME)
+            }
+            SettingsSection("更新") {
+                SettingsActionRow(
+                    icon = { Icon(Icons.Filled.Update, null) },
+                    title = if (checkingForUpdate) "正在检查…" else "检查更新",
+                    subtitle = "从 GitHub Release 检查最新版本",
+                    onClick = { checkForUpdate(manual = true) },
+                )
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = "自动检查更新",
+                    subtitle = if (autoUpdateCheck) "打开应用时自动检查 GitHub Release" else "仅在此页面手动检查",
+                    checked = autoUpdateCheck,
+                    leadingIcon = Icons.Filled.Autorenew,
+                    onCheckedChange = { enabled ->
+                        autoUpdateCheck = enabled
+                        UpdatePreferences.setAutoCheck(this@MainActivity, enabled)
+                    },
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun UpdateDialog(update: AvailableUpdate) {
+        AlertDialog(
+            onDismissRequest = { availableUpdate = null },
+            title = { Text("发现新版本") },
+            text = { Text("当前版本 ${BuildConfig.VERSION_NAME}，可更新至 ${update.version}。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        availableUpdate = null
+                        openExternalUrl(update.releaseUrl)
+                    },
+                ) { Text("查看更新") }
+            },
+            dismissButton = {
+                TextButton(onClick = { availableUpdate = null }) { Text("稍后") }
+            },
+        )
+    }
+
+    @Composable
     private fun ProjectsScreen(modifier: Modifier = Modifier) {
         Column(
             modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
@@ -2649,14 +2745,14 @@ open class MainActivity : ComponentActivity() {
         ) {
             SettingsCard {
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    icon = { Icon(Icons.Filled.Source, null) },
                     title = "Orynnx 原版仓库",
                     subtitle = "github.com/Orynnx/CodeX-Rate-on-Rear-Screen",
                     onClick = { openExternalUrl("https://github.com/Orynnx/CodeX-Rate-on-Rear-Screen") },
                 )
                 SettingsDivider()
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    icon = { Icon(Icons.Filled.ForkRight, null) },
                     title = "尼克狼 Fork 仓库",
                     subtitle = "github.com/NickWoluff/Credex",
                     onClick = { openExternalUrl("https://github.com/NickWoluff/Credex") },
@@ -2692,7 +2788,7 @@ open class MainActivity : ComponentActivity() {
         ) {
             SettingsCard {
                 SettingsActionRow(
-                    icon = { Icon(painterResource(R.drawable.ic_info), null) },
+                    icon = { Icon(Icons.Filled.Description, null) },
                     title = "声明",
                     onClick = { openActivityPage(ActivityPage.DISCLAIMER) },
                 )
@@ -2902,7 +2998,7 @@ open class MainActivity : ComponentActivity() {
                 },
         ) {
             SettingsActionRow(
-                icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
+                icon = { Icon(Icons.Filled.Tune, contentDescription = null) },
                 title = title,
                 subtitle = subtitle,
                 onClick = null,
@@ -3183,8 +3279,15 @@ open class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun SettingsSwitchRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-        AppSwitchRow(title, subtitle, checked, onCheckedChange)
+    private fun SettingsSwitchRow(
+        title: String,
+        subtitle: String,
+        checked: Boolean,
+        onCheckedChange: (Boolean) -> Unit,
+        showLeadingIcon: Boolean = true,
+        leadingIcon: ImageVector? = null,
+    ) {
+        AppSwitchRow(title, subtitle, checked, onCheckedChange, showLeadingIcon, leadingIcon)
     }
 
     @Composable
@@ -3244,6 +3347,9 @@ open class MainActivity : ComponentActivity() {
                     title = title,
                     summary = subtitle?.takeIf { it.isNotBlank() },
                     startAction = if (keepLeadingInMiuix) icon else null,
+                    endActions = {
+                        trailingText?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    },
                 )
                 return
             }
@@ -3252,38 +3358,68 @@ open class MainActivity : ComponentActivity() {
                 summary = subtitle?.takeIf { it.isNotBlank() },
                 onClick = onClick,
                 startAction = if (keepLeadingInMiuix) icon else null,
+                endActions = {
+                    trailingText?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                },
             )
             return
         }
+        val hasSubtitle = subtitle?.isNotBlank() == true
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
             shape = MaterialTheme.shapes.extraSmall,
             color = materialCardColor(),
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
-            ListItem(
-                colors = androidx.compose.material3.ListItemDefaults.colors(
-                    containerColor = Color.Transparent,
-                ),
-                leadingContent = icon ?: if (onClick != null && showChevron) {
-                    {
-                        Icon(
-                            painterResource(defaultListIcon(title)),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = if (hasSubtitle) 72.dp else 56.dp)
+                    .padding(horizontal = 16.dp, vertical = if (hasSubtitle) 12.dp else 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                icon?.let {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurfaceVariant) {
+                            it()
+                        }
                     }
-                } else null,
-                supportingContent = subtitle?.takeIf { it.isNotBlank() }?.let { value ->
-                    { Text(value) }
-                },
-                trailingContent = if (trailingText != null) {
-                    { Text(trailingText, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                } else if (showChevron) {
-                    { Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null) }
-                } else null,
-            ) { Text(title) }
+                    Spacer(Modifier.width(16.dp))
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                    subtitle?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (trailingText != null || showChevron) {
+                    Spacer(Modifier.width(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        trailingText?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (showChevron) {
+                            Spacer(Modifier.width(8.dp))
+                            Icon(
+                                Icons.Filled.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -3354,30 +3490,39 @@ open class MainActivity : ComponentActivity() {
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.extraSmall,
             color = materialCardColor(),
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
-            ListItem(
-                colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
-                leadingContent = {
-                    Icon(
-                        painterResource(defaultListIcon(title)),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                trailingContent = {
-                    Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                },
-            ) { Text(title) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 
-    private fun defaultListIcon(title: String): Int = when {
-        title.contains("小部件") -> R.drawable.ic_widget
-        title.contains("通知") -> R.drawable.ic_notifications
-        title.contains("电池") || title.contains("后台") -> R.drawable.ic_battery
-        title.contains("隐私") || title.contains("健康") || title.contains("预测") -> R.drawable.ic_shield
-        title.contains("刷新") || title.contains("授权") -> R.drawable.ic_refresh
-        else -> R.drawable.ic_settings
+    private fun defaultListIcon(title: String): ImageVector = when {
+        title.contains("模型商") -> Icons.Filled.Apps
+        title.contains("健康") -> Icons.Filled.MonitorHeart
+        title.contains("持续同步") -> Icons.Filled.Sync
+        title.contains("常驻通知") -> Icons.Filled.NotificationsActive
+        title.contains("电池") || title.contains("后台") -> Icons.Filled.BatteryChargingFull
+        title.contains("折叠") -> Icons.Filled.Compress
+        title.contains("动态取色") -> Icons.Filled.ColorLens
+        title.contains("模糊") -> Icons.Filled.BlurOn
+        title.contains("展示剩余") -> Icons.Filled.DataUsage
+        title.contains("Codex 配额") -> Icons.Filled.Speed
+        title.contains("启用此服务") -> Icons.Filled.Visibility
+        else -> Icons.Filled.Tune
     }
 
     @Composable
@@ -3537,6 +3682,8 @@ open class MainActivity : ComponentActivity() {
             ActivityPage.SETTINGS -> SettingsActivity::class.java
             ActivityPage.WIDGET_SETTINGS -> WidgetSettingsActivity::class.java
             ActivityPage.WIDGET_UI_SETTINGS -> WidgetUiSettingsActivity::class.java
+            ActivityPage.REAR_DISPLAY_SETTINGS -> RearDisplaySettingsActivity::class.java
+            ActivityPage.VERSION -> VersionActivity::class.java
             ActivityPage.THEME_SETTINGS -> ThemeSettingsActivity::class.java
             ActivityPage.ABOUT -> AboutActivity::class.java
             ActivityPage.PROJECTS -> ProjectsActivity::class.java
@@ -3584,7 +3731,18 @@ open class MainActivity : ComponentActivity() {
         widgetTokenUnitSystem = WidgetTokenDisplayPreferences.unitSystem(this)
         widgetHeightInput = WidgetHeightPreferences.customInput(this)
         widgetVerticalOffset = WidgetHeightPreferences.verticalOffsetDp(this)
+        rearAssistantServiceId = RearDisplayPreferences.selectedServiceId(this, RearDisplaySurface.ASSISTANT)
+        rearWallpaperServiceId = RearDisplayPreferences.selectedServiceId(this, RearDisplaySurface.WALLPAPER)
+        autoUpdateCheck = UpdatePreferences.autoCheck(this)
         loadThemePreferences()
+    }
+
+    private fun rearDisplayServiceName(surface: RearDisplaySurface): String {
+        val selectedId = when (surface) {
+            RearDisplaySurface.ASSISTANT -> rearAssistantServiceId
+            RearDisplaySurface.WALLPAPER -> rearWallpaperServiceId
+        }
+        return balanceServices.firstOrNull { it.id == selectedId }?.name ?: "未选择"
     }
 
     private fun widgetServiceOptions(): List<Pair<String, String>> = buildList {
@@ -3631,10 +3789,10 @@ open class MainActivity : ComponentActivity() {
             notificationSyncEnabled = QuotaRepository.notificationSyncEnabled(this),
             serviceRunning = QuotaForegroundService.running,
         )
-        ActivityPage.WIDGET_SETTINGS, ActivityPage.WIDGET_UI_SETTINGS -> PageDataSnapshot(
+        ActivityPage.WIDGET_SETTINGS, ActivityPage.WIDGET_UI_SETTINGS, ActivityPage.REAR_DISPLAY_SETTINGS -> PageDataSnapshot(
             services = StandardBalanceRepository.list(this),
         )
-        ActivityPage.ABOUT, ActivityPage.PROJECTS, ActivityPage.REFERENCES, ActivityPage.HELP, ActivityPage.DISCLAIMER -> PageDataSnapshot()
+        ActivityPage.VERSION, ActivityPage.ABOUT, ActivityPage.PROJECTS, ActivityPage.REFERENCES, ActivityPage.HELP, ActivityPage.DISCLAIMER -> PageDataSnapshot()
         ActivityPage.CONFIGURATION -> PageDataSnapshot(
             quotaState = QuotaRepository.current(this),
             services = StandardBalanceRepository.list(this),
@@ -3645,7 +3803,12 @@ open class MainActivity : ComponentActivity() {
 
     private fun applyPageData(snapshot: PageDataSnapshot) {
         snapshot.quotaState?.let { state = it }
-        snapshot.services?.let { balanceServices = it }
+        snapshot.services?.let {
+            balanceServices = it
+            RearDisplayPreferences.ensureDefaults(this, it)
+            rearAssistantServiceId = RearDisplayPreferences.selectedServiceId(this, RearDisplaySurface.ASSISTANT)
+            rearWallpaperServiceId = RearDisplayPreferences.selectedServiceId(this, RearDisplaySurface.WALLPAPER)
+        }
         snapshot.showCodexQuota?.let { showCodexQuota = it }
         snapshot.showHealthStatus?.let { showHealthStatus = it }
         snapshot.showProviderIcons?.let { showProviderIcons = it }
@@ -3665,7 +3828,6 @@ open class MainActivity : ComponentActivity() {
         when {
             showStylePicker -> showStylePicker = false
             showAddServices -> { showAddServices = false; addBrand = null }
-            editingDisplaySurfacesServiceId != null -> editingDisplaySurfacesServiceId = null
             showBalanceEditor && !balanceEditorBusy -> closeBalanceEditor()
             showBalanceEditor -> Unit
             deletingBalanceServiceId != null -> deletingBalanceServiceId = null
@@ -3676,8 +3838,30 @@ open class MainActivity : ComponentActivity() {
 
     private fun hasActiveOverlay(): Boolean =
         showStylePicker || showAddServices || showBalanceEditor ||
-            editingDisplaySurfacesServiceId != null || deletingBalanceServiceId != null ||
+            deletingBalanceServiceId != null ||
             showSignOutConfirm || showNotificationEducation
+
+    private fun checkForUpdate(manual: Boolean) {
+        if (checkingForUpdate) return
+        checkingForUpdate = true
+        Thread {
+            val result = UpdateChecker.check()
+            runOnUiThread {
+                checkingForUpdate = false
+                result.onSuccess { update ->
+                    if (update != null) {
+                        availableUpdate = update
+                    } else if (manual) {
+                        Toast.makeText(this, "当前已是最新版本", Toast.LENGTH_SHORT).show()
+                    }
+                }.onFailure {
+                    if (manual) {
+                        Toast.makeText(this, "检查更新失败：${it.message ?: "请稍后重试"}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }.start()
+    }
 
     private fun openExternalUrl(url: String) {
         startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
@@ -3914,6 +4098,10 @@ class SettingsActivity : MainActivity()
 class WidgetSettingsActivity : MainActivity()
 
 class WidgetUiSettingsActivity : MainActivity()
+
+class RearDisplaySettingsActivity : MainActivity()
+
+class VersionActivity : MainActivity()
 
 class ThemeSettingsActivity : MainActivity()
 

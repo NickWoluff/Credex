@@ -184,12 +184,11 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
                 WidgetSelectionPreferences.get(context, appWidgetId)
             }
             // Keep explicit widget selections stable even if a refresh temporarily marks a
-            // service as unavailable or its surface flags are being written. Rebuilding only
-            // from forSurface() made a refresh look like it had deleted the widget configuration.
+            // service as unavailable. Rebuilding only
+            // Rebuilding from the visible service list made a refresh look like it had deleted
+            // the widget configuration, so explicit widget selections remain stable here.
             val allBalances = StandardBalanceRepository.list(context)
-            val launcherBalances = allBalances.filter {
-                it.visible && BalanceSurface.LAUNCHER in it.displaySurfaces
-            }
+            val launcherBalances = allBalances.filter(BalanceService::visible)
             val codexAvailable = QuotaRepository.signedIn(context)
             // The widget's selection is an explicit user preference. Do not discard it merely
             // because a service is currently disabled, unavailable, or Codex is signed out;

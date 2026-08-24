@@ -42,7 +42,8 @@ abstract class BaseWidgetConfigurationActivity : Activity() {
             if (QuotaRepository.signedIn(this@BaseWidgetConfigurationActivity)) {
                 add(WidgetSelectionPreferences.CODEX_ID to "OpenAI Codex · 5 小时与周配额")
             }
-            StandardBalanceRepository.forSurface(this@BaseWidgetConfigurationActivity, BalanceSurface.LAUNCHER, Int.MAX_VALUE)
+            StandardBalanceRepository.list(this@BaseWidgetConfigurationActivity)
+                .filter { it.visible }
                 .forEach { service -> add(service.id to widgetServiceLabel(service)) }
         }
         val root = LinearLayout(this).apply {
