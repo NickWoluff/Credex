@@ -38,14 +38,11 @@ abstract class BaseWidgetConfigurationActivity : Activity() {
             return
         }
         selectedIds += WidgetSelectionPreferences.get(this, appWidgetId).take(maxSelections)
-        val options = buildList {
-            if (QuotaRepository.signedIn(this@BaseWidgetConfigurationActivity)) {
-                add(WidgetSelectionPreferences.CODEX_ID to "OpenAI Codex · 5 小时与周配额")
-            }
-            StandardBalanceRepository.list(this@BaseWidgetConfigurationActivity)
-                .filter { it.visible }
-                .forEach { service -> add(service.id to widgetServiceLabel(service)) }
-        }
+        val options = widgetPickerServiceOptions(
+            codexAvailable = QuotaRepository.signedIn(this@BaseWidgetConfigurationActivity),
+            services = StandardBalanceRepository.list(this@BaseWidgetConfigurationActivity),
+        )
+        selectedIds.retainAll(options.mapTo(linkedSetOf(), WidgetServiceOption::id))
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 20, 32, 24)
@@ -69,21 +66,21 @@ abstract class BaseWidgetConfigurationActivity : Activity() {
             setPadding(0, 0, 0, 12)
         })
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        options.forEach { (id, label) ->
+        options.forEach { option ->
             val checkBox = CheckBox(this).apply {
-                text = label
+                text = option.label
                 textSize = 17f
-                isChecked = id in selectedIds
+                isChecked = option.id in selectedIds
                 setPadding(8, 12, 8, 12)
                 setOnCheckedChangeListener { _, checked ->
                     if (checked) {
                         if (selectedIds.size >= maxSelections) {
                             isChecked = false
                         } else {
-                            selectedIds += id
+                            selectedIds += option.id
                         }
                     } else {
-                        selectedIds -= id
+                        selectedIds -= option.id
                     }
                 }
             }

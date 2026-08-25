@@ -186,8 +186,9 @@ object DashboardPreferences {
         runCatching { enumValueOf<T>(prefs(context).getString(key, fallback.name).orEmpty()) }.getOrDefault(fallback)
 }
 
-/** One selected balance service per rear-display host. */
+/** One selected display source per rear-display host. */
 object RearDisplayPreferences {
+    const val CODEX_ID = WidgetSelectionPreferences.CODEX_ID
     private const val PREFS = "rear_display_preferences"
     private const val ASSISTANT_SERVICE_ID = "assistant_service_id"
     private const val WALLPAPER_SERVICE_ID = "wallpaper_service_id"
@@ -199,17 +200,26 @@ object RearDisplayPreferences {
         prefs(context).edit { putString(key(surface), serviceId) }
     }
 
-    fun ensureDefaults(context: Context, services: List<BalanceService>) {
-        val firstVisibleId = services.firstOrNull { it.visible }?.id.orEmpty()
-        if (firstVisibleId.isBlank()) return
-        val visibleIds = services.filter { it.visible }.map(BalanceService::id).toSet()
+    fun ensureDefaults(
+        context: Context,
+        services: List<BalanceService>,
+        codexAvailable: Boolean = QuotaRepository.signedIn(context),
+    ) {
+        val validIds = buildSet {
+            if (codexAvailable) add(CODEX_ID)
+            services.mapTo(this, BalanceService::id)
+        }
+        val fallbackId = when {
+            codexAvailable -> CODEX_ID
+            else -> services.firstOrNull { it.visible }?.id ?: services.firstOrNull()?.id.orEmpty()
+        }
         val preferences = prefs(context)
         preferences.edit {
-            if (preferences.getString(ASSISTANT_SERVICE_ID, "").orEmpty() !in visibleIds) {
-                putString(ASSISTANT_SERVICE_ID, firstVisibleId)
+            if (preferences.getString(ASSISTANT_SERVICE_ID, "").orEmpty() !in validIds) {
+                putString(ASSISTANT_SERVICE_ID, fallbackId)
             }
-            if (preferences.getString(WALLPAPER_SERVICE_ID, "").orEmpty() !in visibleIds) {
-                putString(WALLPAPER_SERVICE_ID, firstVisibleId)
+            if (preferences.getString(WALLPAPER_SERVICE_ID, "").orEmpty() !in validIds) {
+                putString(WALLPAPER_SERVICE_ID, fallbackId)
             }
         }
     }
@@ -429,7 +439,7 @@ object StandardBalanceRepository {
         RearDisplayPreferences.ensureDefaults(context, services)
         val selectedId = RearDisplayPreferences.selectedServiceId(context, surface)
         return services
-            .filter { it.visible && it.id == selectedId }
+            .filter { it.id == selectedId }
             .take(limit.coerceAtLeast(0))
     }
 

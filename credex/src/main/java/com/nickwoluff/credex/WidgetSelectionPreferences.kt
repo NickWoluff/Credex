@@ -100,5 +100,54 @@ internal object WidgetSelectionPreferences {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }
 
-/** 小部件选择器、常驻通知均使用用户为服务配置的原始名称。 */
+/** 小部件内容和常驻通知使用用户为服务配置的原始名称。 */
 internal fun widgetServiceLabel(service: BalanceService): String = service.name
+
+internal data class WidgetServiceOption(
+    val id: String,
+    val label: String,
+)
+
+/**
+ * Selection controls need a provider-qualified label. Several built-in providers use the same
+ * service name (for example "账户余额"), so showing only that name makes the dropdown ambiguous.
+ */
+internal fun widgetPickerServiceLabel(service: BalanceService): String {
+    val name = service.name.trim()
+    val provider = platformBrand(service.authMode).displayName
+    return when {
+        name.isBlank() -> provider
+        name.contains(provider, ignoreCase = true) -> name
+        else -> "$provider · $name"
+    }
+}
+
+/** Build one stable ID-backed option list for both Settings and launcher configuration. */
+internal fun widgetPickerServiceOptions(
+    codexAvailable: Boolean,
+    services: List<BalanceService>,
+): List<WidgetServiceOption> = buildList {
+    if (codexAvailable) {
+        add(WidgetServiceOption(WidgetSelectionPreferences.CODEX_ID, "OpenAI Codex · 配额"))
+    }
+    services.forEach { service ->
+        add(WidgetServiceOption(service.id, widgetPickerServiceLabel(service)))
+    }
+}.distinctBy(WidgetServiceOption::id)
+
+internal data class NormalizedWidgetSelection(
+    val primaryId: String,
+    val secondaryId: String,
+)
+
+/** Keep persisted IDs valid when services are removed without silently selecting by label/index. */
+internal fun normalizeWidgetSelection(
+    options: List<WidgetServiceOption>,
+    primaryId: String,
+    secondaryId: String,
+): NormalizedWidgetSelection {
+    val ids = options.mapTo(linkedSetOf(), WidgetServiceOption::id)
+    val normalizedPrimary = primaryId.takeIf(ids::contains) ?: options.firstOrNull()?.id.orEmpty()
+    val normalizedSecondary = secondaryId.takeIf { it in ids && it != normalizedPrimary }.orEmpty()
+    return NormalizedWidgetSelection(normalizedPrimary, normalizedSecondary)
+}

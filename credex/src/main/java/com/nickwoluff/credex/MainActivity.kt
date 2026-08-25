@@ -2378,8 +2378,11 @@ open class MainActivity : ComponentActivity() {
 
     @Composable
     private fun RearDisplaySettingsScreen(modifier: Modifier = Modifier) {
-        val options = balanceServices.filter { it.visible }
-        val optionLabels = options.map(BalanceService::name)
+        val options = widgetPickerServiceOptions(
+            codexAvailable = QuotaRepository.signedIn(this@MainActivity),
+            services = balanceServices,
+        )
+        val optionLabels = options.map(WidgetServiceOption::label)
         val assistantIndex = options.indexOfFirst { it.id == rearAssistantServiceId }.coerceAtLeast(0)
         val wallpaperIndex = options.indexOfFirst { it.id == rearWallpaperServiceId }.coerceAtLeast(0)
         Column(
@@ -2398,7 +2401,7 @@ open class MainActivity : ComponentActivity() {
                 } else {
                     DropdownSelectionPreference(
                         title = "助手",
-                        summary = options.getOrNull(assistantIndex)?.name.orEmpty(),
+                        summary = options.getOrNull(assistantIndex)?.label.orEmpty(),
                         subtitle = "Assistant 背屏显示的服务",
                         items = optionLabels,
                         selectedIndex = assistantIndex,
@@ -2415,7 +2418,7 @@ open class MainActivity : ComponentActivity() {
                     SettingsDivider()
                     DropdownSelectionPreference(
                         title = "壁纸",
-                        summary = options.getOrNull(wallpaperIndex)?.name.orEmpty(),
+                        summary = options.getOrNull(wallpaperIndex)?.label.orEmpty(),
                         subtitle = "Wallpaper 背屏显示的服务",
                         items = optionLabels,
                         selectedIndex = wallpaperIndex,
@@ -2438,9 +2441,21 @@ open class MainActivity : ComponentActivity() {
     private fun WidgetSettingsScreen(modifier: Modifier = Modifier) {
         val widgetOptions = widgetServiceOptions()
         val hasWidgetServices = widgetOptions.isNotEmpty()
-        val primaryIndex = widgetOptions.indexOfFirst { it.first == widgetPrimaryId }.coerceAtLeast(0)
-        val secondaryOptions = listOf("" to "不显示") + widgetOptions.filter { it.first != widgetPrimaryId }
-        val secondaryIndex = secondaryOptions.indexOfFirst { it.first == widgetSecondaryId }.coerceAtLeast(0)
+        val normalizedSelection = normalizeWidgetSelection(widgetOptions, widgetPrimaryId, widgetSecondaryId)
+        val primaryIndex = widgetOptions.indexOfFirst { it.id == normalizedSelection.primaryId }.coerceAtLeast(0)
+        val secondaryOptions = listOf(WidgetServiceOption("", "不显示")) +
+            widgetOptions.filter { it.id != normalizedSelection.primaryId }
+        val secondaryIndex = secondaryOptions.indexOfFirst { it.id == normalizedSelection.secondaryId }.coerceAtLeast(0)
+        LaunchedEffect(widgetOptions, normalizedSelection) {
+            if (
+                hasWidgetServices &&
+                (widgetPrimaryId != normalizedSelection.primaryId || widgetSecondaryId != normalizedSelection.secondaryId)
+            ) {
+                widgetPrimaryId = normalizedSelection.primaryId
+                widgetSecondaryId = normalizedSelection.secondaryId
+                saveWidgetPreferences()
+            }
+        }
         Column(
             modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -2457,11 +2472,11 @@ open class MainActivity : ComponentActivity() {
                 } else {
                     DropdownSelectionPreference(
                         title = "主服务",
-                        summary = widgetOptions.getOrNull(primaryIndex)?.second.orEmpty(),
-                        items = widgetOptions.map { it.second },
+                        summary = widgetOptions.getOrNull(primaryIndex)?.label.orEmpty(),
+                        items = widgetOptions.map { it.label },
                         selectedIndex = primaryIndex,
                         onSelected = { index ->
-                            widgetPrimaryId = widgetOptions.getOrNull(index)?.first.orEmpty()
+                            widgetPrimaryId = widgetOptions.getOrNull(index)?.id.orEmpty()
                             if (widgetSecondaryId == widgetPrimaryId) widgetSecondaryId = ""
                             saveWidgetPreferences()
                         },
@@ -2469,12 +2484,12 @@ open class MainActivity : ComponentActivity() {
                     SettingsDivider()
                     DropdownSelectionPreference(
                         title = "副服务",
-                        summary = secondaryOptions.getOrNull(secondaryIndex)?.second.orEmpty(),
+                        summary = secondaryOptions.getOrNull(secondaryIndex)?.label.orEmpty(),
                         subtitle = "4×2布局右侧显示副服务",
-                        items = secondaryOptions.map { it.second },
+                        items = secondaryOptions.map { it.label },
                         selectedIndex = secondaryIndex,
                         onSelected = { index ->
-                            widgetSecondaryId = secondaryOptions.getOrNull(index)?.first.orEmpty()
+                            widgetSecondaryId = secondaryOptions.getOrNull(index)?.id.orEmpty()
                             saveWidgetPreferences()
                         },
                     )
@@ -3742,25 +3757,22 @@ open class MainActivity : ComponentActivity() {
             RearDisplaySurface.ASSISTANT -> rearAssistantServiceId
             RearDisplaySurface.WALLPAPER -> rearWallpaperServiceId
         }
-        return balanceServices.firstOrNull { it.id == selectedId }?.name ?: "未选择"
+        if (selectedId == RearDisplayPreferences.CODEX_ID) return "OpenAI Codex · 配额"
+        return balanceServices.firstOrNull { it.id == selectedId }
+            ?.let(::widgetPickerServiceLabel)
+            ?: "未选择"
     }
 
-    private fun widgetServiceOptions(): List<Pair<String, String>> = buildList {
-        if (QuotaRepository.signedIn(this@MainActivity)) {
-            add(WidgetSelectionPreferences.CODEX_ID to "OpenAI Codex · 配额")
-        }
-        balanceServices
-            .filter { it.visible }
-            .forEach { add(it.id to widgetServiceLabel(it)) }
-    }.distinctBy { it.first }
+    private fun widgetServiceOptions(): List<WidgetServiceOption> = widgetPickerServiceOptions(
+        codexAvailable = QuotaRepository.signedIn(this@MainActivity),
+        services = balanceServices,
+    )
 
     private fun saveWidgetPreferences() {
         val options = widgetServiceOptions()
-        widgetPrimaryId = options.firstOrNull { it.first == widgetPrimaryId }?.first
-            ?: options.firstOrNull()?.first.orEmpty()
-        if (widgetSecondaryId !in options.map { it.first } || widgetSecondaryId == widgetPrimaryId) {
-            widgetSecondaryId = ""
-        }
+        val normalized = normalizeWidgetSelection(options, widgetPrimaryId, widgetSecondaryId)
+        widgetPrimaryId = normalized.primaryId
+        widgetSecondaryId = normalized.secondaryId
         WidgetSelectionPreferences.setGlobal(
             this,
             widgetPrimaryId,
@@ -3805,7 +3817,11 @@ open class MainActivity : ComponentActivity() {
         snapshot.quotaState?.let { state = it }
         snapshot.services?.let {
             balanceServices = it
-            RearDisplayPreferences.ensureDefaults(this, it)
+            RearDisplayPreferences.ensureDefaults(
+                context = this,
+                services = it,
+                codexAvailable = QuotaRepository.signedIn(this),
+            )
             rearAssistantServiceId = RearDisplayPreferences.selectedServiceId(this, RearDisplaySurface.ASSISTANT)
             rearWallpaperServiceId = RearDisplayPreferences.selectedServiceId(this, RearDisplaySurface.WALLPAPER)
         }

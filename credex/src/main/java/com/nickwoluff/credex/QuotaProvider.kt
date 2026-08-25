@@ -35,25 +35,34 @@ class QuotaProvider : ContentProvider() {
         val balances = appContext?.let {
             StandardBalanceRepository.forRearSurface(it, surface, BALANCE_SLOT_COUNT)
         }.orEmpty()
+        val selectedSourceId = appContext?.let {
+            RearDisplayPreferences.selectedServiceId(it, surface)
+        }.orEmpty()
+        val payload = rearDisplayPayload(state, selectedSourceId, balances)
         return MatrixCursor(COLUMNS).apply {
             val row = ArrayList<Any>(COLUMNS.size)
-            row += state.fiveHourRemaining
-            row += state.fiveHourReset
-            row += state.weeklyRemaining
-            row += state.weeklyReset
-            row += state.plan
-            row += state.status
-            row += state.updatedAt
-            row += balances.size
+            row += payload.quota.fiveHourRemaining
+            row += payload.quota.fiveHourReset
+            row += payload.quota.weeklyRemaining
+            row += payload.quota.weeklyReset
+            row += payload.quota.plan
+            row += payload.quota.status
+            row += payload.quota.updatedAt
+            row += payload.balances.size
             repeat(BALANCE_SLOT_COUNT) { index ->
-                val service = balances.getOrNull(index)
+                val service = payload.balances.getOrNull(index)
                 row += service?.name.orEmpty()
                 row += service?.let(::balanceDisplayValue).orEmpty()
                 row += service?.status.orEmpty()
                 row += service?.detail.orEmpty()
                 row += service?.updatedAt.orEmpty()
             }
+            row += payload.sourceId
+            row += payload.sourceKind
+            row += payload.sourceName
+            row += payload.sourceHealth
             addRow(row.toTypedArray())
+            appContext?.contentResolver?.let { resolver -> setNotificationUri(resolver, uri) }
         }
     }
 
@@ -109,6 +118,7 @@ class QuotaProvider : ContentProvider() {
             "balance_1_name", "balance_1_value", "balance_1_status", "balance_1_detail", "balance_1_updated_at",
             "balance_2_name", "balance_2_value", "balance_2_status", "balance_2_detail", "balance_2_updated_at",
             "balance_3_name", "balance_3_value", "balance_3_status", "balance_3_detail", "balance_3_updated_at",
+            "selected_source_id", "selected_source_kind", "selected_source_name", "selected_source_health",
         )
         private val executor = Executors.newSingleThreadExecutor()
         private val refreshing = AtomicBoolean(false)
@@ -116,3 +126,46 @@ class QuotaProvider : ContentProvider() {
         private val gatedEpoch = AtomicLong(Long.MIN_VALUE)
     }
 }
+
+internal data class RearDisplayPayload(
+    val quota: QuotaState,
+    val balances: List<BalanceService>,
+    val sourceId: String,
+    val sourceKind: String,
+    val sourceName: String,
+    val sourceHealth: String,
+)
+
+/** Expose only the selected source so legacy MAML cards cannot let CodeX mask a balance service. */
+internal fun rearDisplayPayload(
+    quota: QuotaState,
+    selectedSourceId: String,
+    balances: List<BalanceService>,
+): RearDisplayPayload {
+    if (selectedSourceId == RearDisplayPreferences.CODEX_ID) {
+        return RearDisplayPayload(
+            quota = quota,
+            balances = emptyList(),
+            sourceId = selectedSourceId,
+            sourceKind = SOURCE_KIND_CODEX,
+            sourceName = "OpenAI Codex",
+            sourceHealth = quota.health.name.lowercase(),
+        )
+    }
+    val selected = balances.firstOrNull()
+    return RearDisplayPayload(
+        quota = QuotaState(
+            status = selected?.status.orEmpty(),
+            updatedAt = selected?.updatedAt.orEmpty(),
+        ),
+        balances = balances,
+        sourceId = selected?.id.orEmpty(),
+        sourceKind = if (selected == null) SOURCE_KIND_NONE else SOURCE_KIND_BALANCE,
+        sourceName = selected?.name.orEmpty(),
+        sourceHealth = selected?.health?.name?.lowercase() ?: SOURCE_KIND_NONE,
+    )
+}
+
+private const val SOURCE_KIND_CODEX = "codex"
+private const val SOURCE_KIND_BALANCE = "balance"
+private const val SOURCE_KIND_NONE = "none"
