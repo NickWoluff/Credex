@@ -9,6 +9,7 @@ Credex 是一款面向移动端的服务余额与配额查看工具。它可将�
 - 可选择 Material 或 Miuix 界面风格，并提供主题、小部件和通知设置。
 - 支持拖拽排序、服务独立配置、内置登录与加密凭据存储。
 - 提供 Android 桌面小部件；可选择主服务和副服务，并调整展示样式。
+> 注意：背屏功能当前仅适配小米17 Pro 系列，且需借助 Xposed 模块导入。若有需求，可[点击此处](https://github.com/NickWoluff/Credex/releases/download/v1.1.0/RearDisplayResources.zip)下载背屏资源，通过[OuterView](https://github.com/Orynnx/OuterView)（Credex 官方适配支持，已适配HyperOS 4）或其它背屏管理模块导入后使用。
 
 ## 项目结构
 
