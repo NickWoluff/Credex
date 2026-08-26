@@ -915,7 +915,7 @@ object StandardBalanceRepository {
                 siliconFlowConsoleHeaders(cleanSubjectId, cleanSessionToken),
             ),
         )
-        val cashBalance = readSiliconFlowConsoleBalance(data)
+        val balanceAmount = readSiliconFlowConsoleBalance(data)
             ?: error("SiliconFlow 控制台响应中没有 financialInfo.available")
         val voucherBalance = if (withCredentials.includeVouchers) {
             readSiliconFlowVoucherBalance(
@@ -933,8 +933,13 @@ object StandardBalanceRepository {
             java.math.BigDecimal.ZERO
         }
         val next = withCredentials.copy(
-            balance = formatBalance(cashBalance.add(voucherBalance)),
+            balance = formatBalance(balanceAmount.add(voucherBalance)),
             currency = "¥",
+            detail = siliconFlowConsoleBalanceDetail(
+                balanceAmount = balanceAmount,
+                voucherBalance = voucherBalance,
+                includeVouchers = withCredentials.includeVouchers,
+            ),
             updatedAt = clock(),
             lastAttemptAtMillis = System.currentTimeMillis(),
             status = consoleStatus(withCredentials.includeVouchers),
@@ -1628,7 +1633,7 @@ object StandardBalanceRepository {
                     siliconFlowConsoleHeaders(current.subjectId, current.sessionToken),
                 ),
             )
-            val cashBalance = readSiliconFlowConsoleBalance(data)
+            val balanceAmount = readSiliconFlowConsoleBalance(data)
                 ?: error("SiliconFlow 控制台响应中没有 financialInfo.available")
             val voucherBalance = if (current.includeVouchers) {
                 readSiliconFlowVoucherBalance(
@@ -1646,8 +1651,13 @@ object StandardBalanceRepository {
                 java.math.BigDecimal.ZERO
             }
             val success = current.copy(
-                balance = formatBalance(cashBalance.add(voucherBalance)),
+                balance = formatBalance(balanceAmount.add(voucherBalance)),
                 currency = "¥",
+                detail = siliconFlowConsoleBalanceDetail(
+                    balanceAmount = balanceAmount,
+                    voucherBalance = voucherBalance,
+                    includeVouchers = current.includeVouchers,
+                ),
                 updatedAt = clock(),
                 status = consoleStatus(current.includeVouchers),
                 health = BalanceHealth.FRESH,
@@ -1816,15 +1826,15 @@ object StandardBalanceRepository {
             val paid = toppedUp ?: total.subtract(granted ?: java.math.BigDecimal.ZERO).max(java.math.BigDecimal.ZERO)
             val displayedTotal = if (includeGrantedBalance) total else paid
             val parts = buildList {
-                if (includeGrantedBalance) granted?.let { add("赠送 ${currency} ${formatBalance(it)}") }
-                toppedUp?.let { add("充值 ${currency} ${formatBalance(it)}") }
+                add("充值 ${formatMoney(currency, paid)}")
+                if (includeGrantedBalance) granted?.let { add("赠送 ${formatMoney(currency, it)}") }
             }
             DeepSeekBalanceSnapshot(displayedTotal, currency, parts.joinToString(" · "), true)
         }
         check(snapshots.isNotEmpty()) { "DeepSeek 响应中没有有效余额" }
         val preferred = snapshots.firstOrNull { it.currency.equals("CNY", ignoreCase = true) } ?: snapshots.first()
         val detail = if (snapshots.size == 1) preferred.detail else {
-            snapshots.joinToString(" · ") { "${it.currency} ${formatBalance(it.total)}" }
+            snapshots.joinToString(" · ") { formatMoney(it.currency, it.total) }
         }
         return preferred.copy(
             detail = detail,
@@ -1894,6 +1904,15 @@ object StandardBalanceRepository {
 
     private fun formatBalance(value: java.math.BigDecimal): String =
         value.stripTrailingZeros().toPlainString()
+
+    private fun formatMoney(currency: String, value: java.math.BigDecimal): String {
+        val amount = formatBalance(value)
+        return if (currency.equals("CNY", ignoreCase = true) || currency == "¥") {
+            "¥$amount"
+        } else {
+            "$currency $amount"
+        }
+    }
 
     private fun normalizeEndpoint(raw: String): String {
         val endpoint = raw.trim().trimEnd('/')
@@ -2047,6 +2066,15 @@ internal fun mergeMimoCookieHeader(existing: String, setCookieHeaders: List<Stri
 internal fun siliconFlowConsoleCashToYuan(raw: java.math.BigDecimal): java.math.BigDecimal =
     raw.divide(java.math.BigDecimal("1000000000000"))
 
+internal fun siliconFlowConsoleBalanceDetail(
+    balanceAmount: java.math.BigDecimal,
+    voucherBalance: java.math.BigDecimal,
+    includeVouchers: Boolean,
+): String = buildList {
+    add("余额 ¥${balanceAmount.stripTrailingZeros().toPlainString()}")
+    if (includeVouchers) add("代金券 ¥${voucherBalance.stripTrailingZeros().toPlainString()}")
+}.joinToString(" · ")
+
 internal data class MimoPayAsYouGoSnapshot(
     val cash: java.math.BigDecimal,
     val gift: java.math.BigDecimal?,
@@ -2130,7 +2158,7 @@ internal fun balanceDisplayValue(service: BalanceService): String {
     }.getOrDefault(service.balance)
     return when {
         service.currency.equals("USD", ignoreCase = true) -> "\$$amount"
-        service.currency.equals("CNY", ignoreCase = true) -> "¥$amount"
+        service.currency.equals("CNY", ignoreCase = true) || service.currency == "¥" -> "¥$amount"
         else -> "${service.currency} $amount"
     }
 }

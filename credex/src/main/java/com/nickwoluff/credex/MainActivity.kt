@@ -174,6 +174,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
@@ -191,6 +192,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -213,6 +215,7 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator as MiuixLinearProgres
 import top.yukonga.miuix.kmp.basic.Surface as MiuixSurface
 import top.yukonga.miuix.kmp.basic.Slider as MiuixSlider
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
+import top.yukonga.miuix.kmp.basic.Text as MiuixText
 import top.yukonga.miuix.kmp.window.WindowDialog as MiuixWindowDialog
 import top.yukonga.miuix.kmp.window.WindowBottomSheet as MiuixWindowBottomSheet
 import top.yukonga.miuix.kmp.preference.ArrowPreference as MiuixArrowPreference
@@ -1396,11 +1399,13 @@ open class MainActivity : ComponentActivity() {
         singleAction: Boolean = false,
     ) {
         if (uiStyle == UiStyle.MIUIX) {
+            var dialogVisible by remember { mutableStateOf(true) }
             MiuixWindowDialog(
                 title = title,
                 summary = summary,
-                show = true,
-                onDismissRequest = onDismissRequest,
+                show = dialogVisible,
+                onDismissRequest = { dialogVisible = false },
+                onDismissFinished = onDismissRequest,
             ) {
                 // Miuix 的 WindowDialog 不会为任意嵌入式 Compose 内容提供 Material 的
                 // LocalContentColor。用透明 Surface 显式建立主题前景色，避免深色模式下
@@ -2181,11 +2186,16 @@ open class MainActivity : ComponentActivity() {
                 }
             }
         } else {
+            var sheetVisible by remember { mutableStateOf(true) }
             MiuixWindowBottomSheet(
-                show = true,
+                show = sheetVisible,
                 title = title,
                 defaultWindowInsetsPadding = false,
-                onDismissRequest = { showAddServices = false; addBrand = null },
+                onDismissRequest = { sheetVisible = false },
+                onDismissFinished = {
+                    showAddServices = false
+                    addBrand = null
+                },
             ) {
                 KeepDialogNavigationImmersive()
                 Box(Modifier.fillMaxWidth().heightIn(max = 620.dp)) { AddServicesBody() }
@@ -2750,22 +2760,272 @@ open class MainActivity : ComponentActivity() {
 
     @Composable
     private fun UpdateDialog(update: AvailableUpdate) {
-        AlertDialog(
-            onDismissRequest = { availableUpdate = null },
-            title = { Text("发现新版本") },
-            text = { Text("当前版本 ${BuildConfig.VERSION_NAME}，可更新至 ${update.version}。") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        availableUpdate = null
-                        openExternalUrl(update.releaseUrl)
-                    },
-                ) { Text("查看更新") }
-            },
-            dismissButton = {
-                TextButton(onClick = { availableUpdate = null }) { Text("稍后") }
-            },
-        )
+        val dismiss = { availableUpdate = null }
+        val openRelease = {
+            dismiss()
+            openExternalUrl(update.releaseUrl)
+        }
+
+        if (uiStyle == UiStyle.MATERIAL) {
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
+                onDismissRequest = dismiss,
+                sheetState = sheetState,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                tonalElevation = 0.dp,
+            ) {
+                MaterialUpdateSheetContent(
+                    update = update,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                    onDismiss = dismiss,
+                    onOpenRelease = openRelease,
+                )
+            }
+        } else {
+            var sheetVisible by remember { mutableStateOf(true) }
+            MiuixWindowBottomSheet(
+                show = sheetVisible,
+                backgroundColor = MiuixTheme.colorScheme.surface,
+                defaultWindowInsetsPadding = false,
+                onDismissRequest = { sheetVisible = false },
+                onDismissFinished = dismiss,
+            ) {
+                KeepDialogNavigationImmersive()
+                MiuixUpdateSheetContent(
+                    update = update,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 0.dp)
+                        .navigationBarsPadding(),
+                    onDismiss = dismiss,
+                    onOpenRelease = openRelease,
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun MaterialUpdateSheetContent(
+        update: AvailableUpdate,
+        modifier: Modifier = Modifier,
+        onDismiss: () -> Unit,
+        onOpenRelease: () -> Unit,
+    ) {
+        val releaseNotes = update.releaseNotes.ifBlank { "暂无更新说明" }
+        val notesMaxHeight = updateNotesMaxHeight()
+
+        Column(
+            modifier = modifier.padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Update,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(40.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "发现新版本 ${update.version}",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "当前版本：${BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Text(
+                        text = "正式版",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                    )
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 96.dp, max = notesMaxHeight),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = "更新内容",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = releaseNotes,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppNeutralButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.widthIn(min = 88.dp),
+                ) {
+                    Text(
+                        text = "忽略",
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                AppButton(
+                    onClick = onOpenRelease,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        text = "更新",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun MiuixUpdateSheetContent(
+        update: AvailableUpdate,
+        modifier: Modifier = Modifier,
+        onDismiss: () -> Unit,
+        onOpenRelease: () -> Unit,
+    ) {
+        val releaseNotes = update.releaseNotes.ifBlank { "暂无更新说明" }
+        val notesMaxHeight = updateNotesMaxHeight()
+        val colors = MiuixTheme.colorScheme
+
+        Column(
+            modifier = modifier.padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Update,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(40.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    MiuixText(
+                        text = "发现新版本 ${update.version}",
+                        style = MiuixTheme.textStyles.title3,
+                        color = colors.onSurface,
+                    )
+                    MiuixText(
+                        text = "当前版本：${BuildConfig.VERSION_NAME}",
+                        style = MiuixTheme.textStyles.body2,
+                        color = colors.onSurfaceVariantSummary,
+                    )
+                }
+                MiuixSurface(
+                    shape = RoundedCornerShape(50),
+                    color = colors.primaryContainer,
+                ) {
+                    MiuixText(
+                        text = "正式版",
+                        style = MiuixTheme.textStyles.body2,
+                        color = colors.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                    )
+                }
+            }
+
+            MiuixCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 96.dp, max = notesMaxHeight),
+                colors = top.yukonga.miuix.kmp.basic.CardDefaults.defaultColors(
+                    color = colors.surfaceContainer,
+                    contentColor = colors.onSurfaceContainer,
+                ),
+                insideMargin = PaddingValues(0.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    MiuixText(
+                        text = "更新内容",
+                        style = MiuixTheme.textStyles.subtitle,
+                        color = colors.onSurfaceContainer,
+                    )
+                    MiuixText(
+                        text = releaseNotes,
+                        style = MiuixTheme.textStyles.paragraph,
+                        color = colors.onSurfaceContainerVariant,
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                MiuixButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.widthIn(min = 88.dp),
+                    colors = MiuixButtonDefaults.buttonColors(),
+                ) {
+                    MiuixText(
+                        text = "忽略",
+                        style = MiuixTheme.textStyles.button,
+                    )
+                }
+                MiuixButton(
+                    onClick = onOpenRelease,
+                    modifier = Modifier.weight(1f),
+                    colors = MiuixButtonDefaults.buttonColorsPrimary(),
+                ) {
+                    MiuixText(
+                        text = "更新",
+                        style = MiuixTheme.textStyles.button,
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun updateNotesMaxHeight(): androidx.compose.ui.unit.Dp {
+        val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+        return (screenHeight * 0.45f).coerceAtLeast(180.dp)
     }
 
     @Composable
@@ -3222,7 +3482,7 @@ open class MainActivity : ComponentActivity() {
                     if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) {
                         EditorSwitchRow(
                             title = "把代金券计入余额",
-                            subtitle = if (balanceIncludeVouchers) "会把可用代金券剩余额度一并累加" else "只显示控制台现金余额",
+                            subtitle = if (balanceIncludeVouchers) "会把可用代金券剩余额度一并累加" else "只显示控制台余额",
                             checked = balanceIncludeVouchers,
                             onCheckedChange = { balanceIncludeVouchers = it; balanceEditorError = "" },
                         )
@@ -3882,6 +4142,7 @@ open class MainActivity : ComponentActivity() {
 
     private fun navigateBack() {
         when {
+            availableUpdate != null -> availableUpdate = null
             showStylePicker -> showStylePicker = false
             showAddServices -> { showAddServices = false; addBrand = null }
             showBalanceEditor && !balanceEditorBusy -> closeBalanceEditor()
@@ -3893,7 +4154,7 @@ open class MainActivity : ComponentActivity() {
     }
 
     private fun hasActiveOverlay(): Boolean =
-        showStylePicker || showAddServices || showBalanceEditor ||
+        availableUpdate != null || showStylePicker || showAddServices || showBalanceEditor ||
             deletingBalanceServiceId != null ||
             showSignOutConfirm || showNotificationEducation
 
