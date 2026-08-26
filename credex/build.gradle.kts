@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
-val credexVersionName = "1.1.1"
+val credexVersionName = "1.1.2"
 
 plugins {
     alias(libs.plugins.android.application)
