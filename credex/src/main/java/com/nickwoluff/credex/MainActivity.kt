@@ -2415,6 +2415,9 @@ open class MainActivity : ComponentActivity() {
             modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            SettingsTextCard(
+                "背屏功能当前仅适配小米17 Pro 系列，且需借助 Xposed 模块导入；若有需求，可前往项目地址 README 获取背屏资源与使用方法。",
+            )
             SettingsCard {
                 if (options.isEmpty()) {
                     SettingsActionRow(
@@ -2835,7 +2838,9 @@ open class MainActivity : ComponentActivity() {
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = "发现新版本 ${update.version}",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        ),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
@@ -2874,12 +2879,16 @@ open class MainActivity : ComponentActivity() {
                 ) {
                     Text(
                         text = "更新内容",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = MaterialTheme.typography.bodyLarge.fontSize,
+                        ),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
                         text = releaseNotes,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = MaterialTheme.typography.titleMedium.fontSize,
+                        ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -2941,7 +2950,9 @@ open class MainActivity : ComponentActivity() {
                 Column(Modifier.weight(1f)) {
                     MiuixText(
                         text = "发现新版本 ${update.version}",
-                        style = MiuixTheme.textStyles.title3,
+                        style = MiuixTheme.textStyles.title3.copy(
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        ),
                         color = colors.onSurface,
                     )
                     MiuixText(
@@ -2982,12 +2993,16 @@ open class MainActivity : ComponentActivity() {
                 ) {
                     MiuixText(
                         text = "更新内容",
-                        style = MiuixTheme.textStyles.subtitle,
+                        style = MiuixTheme.textStyles.subtitle.copy(
+                            fontSize = MiuixTheme.textStyles.paragraph.fontSize,
+                        ),
                         color = colors.onSurfaceContainer,
                     )
                     MiuixText(
                         text = releaseNotes,
-                        style = MiuixTheme.textStyles.paragraph,
+                        style = MiuixTheme.textStyles.paragraph.copy(
+                            fontSize = MiuixTheme.textStyles.subtitle.fontSize,
+                        ),
                         color = colors.onSurfaceContainerVariant,
                     )
                 }
