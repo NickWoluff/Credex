@@ -48,4 +48,20 @@ class MimoBalanceTest {
         val snapshot = readMimoPayAsYouGo(JSONObject("""{"balance":1}"""))
         assertNull(snapshot.gift)
     }
+
+    @Test
+    fun rotatedMimoCookiesReplaceOnlyTheMatchingSessionCookie() {
+        val merged = mergeMimoCookieHeader(
+            "api-platform_ph=old-ph; api-platform_serviceToken=old-token; api-platform_slh=old-slh; userId=old-user",
+            listOf(
+                "api-platform_serviceToken=new-token; Path=/; Max-Age=86400; Secure; HttpOnly",
+                "userId=new-user; Path=/; Max-Age=86400; Secure",
+            ),
+        )
+
+        assertEquals(
+            "api-platform_ph=old-ph; api-platform_serviceToken=new-token; api-platform_slh=old-slh; userId=new-user",
+            merged,
+        )
+    }
 }

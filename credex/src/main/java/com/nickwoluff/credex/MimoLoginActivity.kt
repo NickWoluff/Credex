@@ -68,7 +68,9 @@ class MimoLoginActivity : LoginSurfaceActivity() {
             primaryAction = LoginTopAction.RETRY,
             onPrimaryAction = { loadLoginPage(forceReload = true) },
         )
-        clearLoginSessionData(listOf(ORIGIN, ACCOUNT_ORIGIN)) { loadLoginPage(forceReload = false) }
+        // 小米 MIMO 依赖小米账号会话签发短时平台 Cookie。
+        // 此处清空共享 WebView Cookie 会让控制台无法静默续签。
+        loadLoginPage(forceReload = false)
     }
 
     override fun onDestroy() {
@@ -90,8 +92,8 @@ class MimoLoginActivity : LoginSurfaceActivity() {
         cancelLoadTimeout()
         webView.visibility = View.VISIBLE
         loginStatus = "正在打开 Xiaomi MIMO 控制台…"
-        // Let the console create its signed Xiaomi Account redirect when sign-in is required.
-        // The STS endpoint cannot be opened directly because its signature is per-request.
+        // 需要登录时，由控制台生成带签名的小米账号跳转地址。
+        // STS 地址的签名按请求生成，不能直接访问。
         loadLoginUrl(BALANCE_URL)
         armLoadTimeout()
     }
@@ -131,8 +133,31 @@ class MimoLoginActivity : LoginSurfaceActivity() {
     private fun capture(value: String?) {
         val candidate = value?.trim().orEmpty()
         if (candidate.isBlank()) return
-        if (candidate.contains("api-platform_ph=") || candidate.contains("api-platform_serviceToken=") || candidate.contains("api-platform_slh=")) {
-            cookieHeader = candidate
+        val current = parseCookies(cookieHeader)
+        var changed = false
+        candidate.split(';').map(String::trim).forEach { item ->
+            val separator = item.indexOf('=')
+            if (separator <= 0) return@forEach
+            val name = item.substring(0, separator).trim()
+            if (name !in SESSION_COOKIE_NAMES) return@forEach
+            val valuePart = item.substring(separator + 1).trim()
+            if (current[name] != valuePart) {
+                current[name] = valuePart
+                changed = true
+            }
+        }
+        if (changed && current.keys.any { it in PLATFORM_COOKIE_NAMES }) {
+            cookieHeader = current.entries.joinToString("; ") { (name, valuePart) -> "$name=$valuePart" }
+        }
+    }
+
+    private fun parseCookies(header: String): LinkedHashMap<String, String> = linkedMapOf<String, String>().apply {
+        header.split(';').map(String::trim).forEach { item ->
+            val separator = item.indexOf('=')
+            if (separator > 0) {
+                val name = item.substring(0, separator).trim()
+                if (name in SESSION_COOKIE_NAMES) put(name, item.substring(separator + 1).trim())
+            }
         }
     }
 
@@ -161,5 +186,11 @@ class MimoLoginActivity : LoginSurfaceActivity() {
         private const val ACCOUNT_ORIGIN = "https://account.xiaomi.com"
         private const val BALANCE_URL = "https://platform.xiaomimimo.com/console/balance"
         private const val LOAD_TIMEOUT_MS = 20_000L
+        private val PLATFORM_COOKIE_NAMES = setOf(
+            "api-platform_ph",
+            "api-platform_serviceToken",
+            "api-platform_slh",
+        )
+        private val SESSION_COOKIE_NAMES = PLATFORM_COOKIE_NAMES + "userId"
     }
 }

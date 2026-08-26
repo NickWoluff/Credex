@@ -9,6 +9,7 @@ import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.HttpCookie
 import java.net.URL
 import java.net.URLEncoder
 import java.security.KeyStore
@@ -957,7 +958,7 @@ object StandardBalanceRepository {
             displayKind = if (service.authMode == BalanceAuthMode.MIMO_TOKEN_PLAN) BalanceDisplayKind.TOKEN_PLAN else BalanceDisplayKind.AMOUNT,
         )
         replace(context, withCredentials)
-        val next = fetchMimo(withCredentials)
+        val next = fetchMimo(context, withCredentials)
         replace(context, next)
         QuotaRefreshScheduler.schedule(context)
         notifyChanged(context)
@@ -970,7 +971,7 @@ object StandardBalanceRepository {
         replace(context, initial.copy(lastAttemptAtMillis = now))
         return try {
             val current = requireStored(context, initial.id)
-            val success = fetchMimo(current)
+            val success = fetchMimo(context, current)
             replace(context, success)
             notifyChanged(context)
             success.public()
@@ -987,12 +988,26 @@ object StandardBalanceRepository {
         }
     }
 
-    private fun fetchMimo(service: StoredBalanceService): StoredBalanceService {
-        val headers = mimoHeaders(service.sessionToken)
+    private fun fetchMimo(context: Context, service: StoredBalanceService): StoredBalanceService {
+        var current = service
+        fun request(url: String): JSONObject = requestJson(
+            url,
+            "GET",
+            null,
+            null,
+            mimoHeaders(current.sessionToken),
+            onSetCookies = { setCookies ->
+                val merged = mergeMimoCookieHeader(current.sessionToken, setCookies)
+                if (merged != current.sessionToken) {
+                    current = current.copy(sessionToken = merged)
+                    replace(context, current)
+                }
+            },
+        )
         return if (service.authMode == BalanceAuthMode.MIMO_BALANCE) {
-            val data = unwrap(requestJson(mimoBalanceUrl(service.endpoint), "GET", null, null, headers))
+            val data = unwrap(request(mimoBalanceUrl(service.endpoint)))
             val snapshot = readMimoPayAsYouGo(data)
-            service.copy(
+            current.copy(
                 balance = formatBalance(snapshot.cash),
                 currency = "CNY",
                 detail = buildString {
@@ -1009,10 +1024,10 @@ object StandardBalanceRepository {
                 health = BalanceHealth.FRESH,
             )
         } else {
-            val detail = unwrap(requestJson(mimoTokenPlanDetailUrl(service.endpoint), "GET", null, null, headers))
-            val usage = unwrap(requestJson(mimoTokenPlanUsageUrl(service.endpoint), "GET", null, null, headers))
+            val detail = unwrap(request(mimoTokenPlanDetailUrl(service.endpoint)))
+            val usage = unwrap(request(mimoTokenPlanUsageUrl(service.endpoint)))
             val snapshot = readMimoTokenPlan(detail, usage)
-            service.copy(
+            current.copy(
                 balance = formatBalance(snapshot.remaining),
                 currency = "TOKEN",
                 detail = buildString {
@@ -1684,6 +1699,7 @@ object StandardBalanceRepository {
         body: JSONObject?,
         token: String?,
         headers: Map<String, String> = emptyMap(),
+        onSetCookies: ((List<String>) -> Unit)? = null,
     ): JSONObject {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.requestMethod = method
@@ -1699,6 +1715,11 @@ object StandardBalanceRepository {
             connection.outputStream.use { it.write(body.toString().toByteArray()) }
         }
         val code = connection.responseCode
+        onSetCookies?.invoke(
+            connection.headerFields.entries
+                .filter { (name, _) -> name.equals("Set-Cookie", ignoreCase = true) }
+                .flatMap { it.value.orEmpty() },
+        )
         val stream = if (code in 200..299) connection.inputStream else connection.errorStream
         val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
         if (code !in 200..299) {
@@ -1986,6 +2007,36 @@ object StandardBalanceRepository {
     }
 
     private fun String.toUriCompat() = android.net.Uri.parse(this)
+}
+
+private val MIMO_SESSION_COOKIE_NAMES = setOf(
+    "api-platform_ph",
+    "api-platform_serviceToken",
+    "api-platform_slh",
+    "userId",
+)
+
+/** 仅合并小米 MIMO 控制台回传的会话 Cookie。 */
+internal fun mergeMimoCookieHeader(existing: String, setCookieHeaders: List<String>): String {
+    val cookies = linkedMapOf<String, String>()
+    existing.trim()
+        .removePrefix("Cookie:")
+        .trim()
+        .split(';')
+        .map(String::trim)
+        .forEach { item ->
+            val separator = item.indexOf('=')
+            if (separator > 0) {
+                val name = item.substring(0, separator).trim()
+                if (name in MIMO_SESSION_COOKIE_NAMES) cookies[name] = item.substring(separator + 1).trim()
+            }
+        }
+    setCookieHeaders.forEach { header ->
+        val cookie = runCatching { HttpCookie.parse(header).firstOrNull() }.getOrNull() ?: return@forEach
+        if (cookie.name !in MIMO_SESSION_COOKIE_NAMES) return@forEach
+        if (cookie.maxAge == 0L) cookies.remove(cookie.name) else cookies[cookie.name] = cookie.value
+    }
+    return cookies.entries.joinToString("; ") { (name, value) -> "$name=$value" }
 }
 
 // SiliconFlow walletd returns console money in 1e-12 CNY units.

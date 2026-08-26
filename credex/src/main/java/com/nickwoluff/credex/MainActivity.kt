@@ -79,18 +79,20 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Compress
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ForkRight
 import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MonitorHeart
@@ -103,6 +105,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Tune
@@ -3013,7 +3016,7 @@ open class MainActivity : ComponentActivity() {
                 },
         ) {
             SettingsActionRow(
-                icon = { Icon(Icons.Filled.Tune, contentDescription = null) },
+                icon = { Icon(dropdownPreferenceIcon(title), contentDescription = null) },
                 title = title,
                 subtitle = subtitle,
                 onClick = null,
@@ -3532,11 +3535,19 @@ open class MainActivity : ComponentActivity() {
         title.contains("常驻通知") -> Icons.Filled.NotificationsActive
         title.contains("电池") || title.contains("后台") -> Icons.Filled.BatteryChargingFull
         title.contains("折叠") -> Icons.Filled.Compress
-        title.contains("动态取色") -> Icons.Filled.ColorLens
+        title.contains("动态取色") -> Icons.Filled.Style
         title.contains("模糊") -> Icons.Filled.BlurOn
         title.contains("展示剩余") -> Icons.Filled.DataUsage
         title.contains("Codex 配额") -> Icons.Filled.Speed
         title.contains("启用此服务") -> Icons.Filled.Visibility
+        else -> Icons.Filled.Tune
+    }
+
+    private fun dropdownPreferenceIcon(title: String): ImageVector = when (title) {
+        "界面风格" -> Icons.Filled.GridView
+        "主题" -> Icons.Filled.DarkMode
+        "强调色" -> Icons.Filled.Palette
+        "调色板风格" -> Icons.Filled.AutoAwesome
         else -> Icons.Filled.Tune
     }
 
