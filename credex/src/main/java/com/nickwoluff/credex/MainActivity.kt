@@ -2416,7 +2416,7 @@ open class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SettingsTextCard(
-                "背屏功能当前仅适配小米17 Pro 系列，且需借助 Xposed 模块导入；若有需求，可前往项目地址 README 获取背屏资源与使用方法。",
+                "背屏功能当前仅适配 小米17 Pro 系列，且需借助 Xposed 模块导入；若有需求，可前往项目地址 README 获取背屏资源与使用方法。",
             )
             SettingsCard {
                 if (options.isEmpty()) {
