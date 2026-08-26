@@ -157,6 +157,7 @@ object DashboardPreferences {
     private const val MATERIAL_ACCENT = "material_accent"
     private const val MATERIAL_PALETTE_STYLE = "material_palette_style"
     private const val MIUIX_BLUR = "miuix_blur"
+    private const val PREDICTIVE_BACK_GESTURE = "predictive_back_gesture"
 
     fun showCodex(context: Context) = prefs(context).getBoolean(SHOW_CODEX, true)
     fun setShowCodex(context: Context, value: Boolean) = prefs(context).edit { putBoolean(SHOW_CODEX, value) }
@@ -181,6 +182,9 @@ object DashboardPreferences {
         prefs(context).edit { putString(MATERIAL_PALETTE_STYLE, value.name) }
     fun miuixBlur(context: Context) = prefs(context).getBoolean(MIUIX_BLUR, true)
     fun setMiuixBlur(context: Context, value: Boolean) = prefs(context).edit { putBoolean(MIUIX_BLUR, value) }
+    fun predictiveBackGesture(context: Context) = prefs(context).getBoolean(PREDICTIVE_BACK_GESTURE, true)
+    fun setPredictiveBackGesture(context: Context, value: Boolean) =
+        prefs(context).edit { putBoolean(PREDICTIVE_BACK_GESTURE, value) }
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     private inline fun <reified T : Enum<T>> enumPreference(context: Context, key: String, fallback: T): T =

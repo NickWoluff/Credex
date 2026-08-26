@@ -23,6 +23,7 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -89,10 +90,10 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DataUsage
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ForkRight
 import androidx.compose.material.icons.filled.FormatQuote
-import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MonitorHeart
@@ -106,6 +107,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.SwipeLeft
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Tune
@@ -194,6 +196,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
@@ -425,6 +428,7 @@ open class MainActivity : ComponentActivity() {
     private var materialAccent by mutableStateOf(MaterialAccent.BLUE)
     private var materialPaletteStyle by mutableStateOf(MaterialPaletteStyle.TONAL_SPOT)
     private var miuixBlur by mutableStateOf(true)
+    private var predictiveBackGesture by mutableStateOf(true)
     private var widgetPrimaryId by mutableStateOf(WidgetSelectionPreferences.CODEX_ID)
     private var widgetSecondaryId by mutableStateOf("")
     private var widgetCollapseTokenValues by mutableStateOf(false)
@@ -576,9 +580,18 @@ open class MainActivity : ComponentActivity() {
                 materialPaletteStyle = materialPaletteStyle,
             ) {
                 val hasOverlay = hasActiveOverlay()
-                BackHandler(enabled = hasOverlay, onBack = ::navigateBack)
+                val predictiveBackEnabled =
+                    predictiveBackGesture && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                PredictiveBackHandler(enabled = hasOverlay && predictiveBackEnabled) { progress ->
+                    progress.collect { }
+                    navigateBack()
+                }
                 BackHandler(
-                    enabled = activityPage != ActivityPage.ROOT && !hasOverlay,
+                    enabled = hasOverlay && !predictiveBackEnabled,
+                    onBack = ::navigateBack,
+                )
+                BackHandler(
+                    enabled = activityPage != ActivityPage.ROOT && !hasOverlay && !predictiveBackEnabled,
                     onBack = { finish() },
                 )
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -2765,8 +2778,8 @@ open class MainActivity : ComponentActivity() {
                 SettingsActionRow(
                     icon = { Icon(Icons.Filled.Source, null) },
                     title = "Orynnx 原版仓库",
-                    subtitle = "github.com/Orynnx/CodeX-Rate-on-Rear-Screen",
-                    onClick = { openExternalUrl("https://github.com/Orynnx/CodeX-Rate-on-Rear-Screen") },
+                    subtitle = "github.com/Orynnx/Credex",
+                    onClick = { openExternalUrl("https://github.com/Orynnx/Credex") },
                 )
                 SettingsDivider()
                 SettingsActionRow(
@@ -2956,6 +2969,21 @@ open class MainActivity : ComponentActivity() {
                         },
                     )
                 }
+                SettingsDivider()
+                SettingsSwitchRow(
+                    title = "预测性返回手势",
+                    subtitle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        "启用系统返回预览动画"
+                    } else {
+                        "需要 Android 13 或更高版本"
+                    },
+                    checked = predictiveBackGesture,
+                    leadingIcon = Icons.Filled.SwipeLeft,
+                    onCheckedChange = { enabled ->
+                        predictiveBackGesture = enabled
+                        DashboardPreferences.setPredictiveBackGesture(this@MainActivity, enabled)
+                    },
+                )
             }
         }
     }
@@ -3544,7 +3572,7 @@ open class MainActivity : ComponentActivity() {
     }
 
     private fun dropdownPreferenceIcon(title: String): ImageVector = when (title) {
-        "界面风格" -> Icons.Filled.GridView
+        "界面风格" -> Icons.Filled.Dashboard
         "主题" -> Icons.Filled.DarkMode
         "强调色" -> Icons.Filled.Palette
         "调色板风格" -> Icons.Filled.AutoAwesome
@@ -3849,6 +3877,7 @@ open class MainActivity : ComponentActivity() {
         materialAccent = DashboardPreferences.materialAccent(this)
         materialPaletteStyle = DashboardPreferences.materialPaletteStyle(this)
         miuixBlur = DashboardPreferences.miuixBlur(this)
+        predictiveBackGesture = DashboardPreferences.predictiveBackGesture(this)
     }
 
     private fun navigateBack() {

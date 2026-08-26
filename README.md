@@ -1,6 +1,6 @@
 # Credex
 
-Credex 是一款仅面向竖屏手机的 Android 服务余额与配额查看工具。它可将已添加服务的账户余额、Token Plan 或 Coding Plan 配额集中展示，并提供 Android 原生桌面小部件。
+Credex 是一款面向移动端的服务余额与配额查看工具。它可将已添加服务的账户余额、Token Plan 或 Coding Plan 配额集中展示，并提供 Android 原生桌面小部件。
 
 ## 功能
 

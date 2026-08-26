@@ -2,6 +2,7 @@
 .gradle/
 .kotlin/
 **/build/
+credex/release/
 captures/
 .externalNativeBuild/
 .cxx/
