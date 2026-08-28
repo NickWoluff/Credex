@@ -997,63 +997,79 @@ object StandardBalanceRepository {
         }
     }
 
-    private fun fetchMimo(context: Context, service: StoredBalanceService): StoredBalanceService {
+    private fun fetchMimo(
+        context: Context,
+        service: StoredBalanceService,
+        allowSessionRefresh: Boolean = true,
+    ): StoredBalanceService {
         var current = service
-        fun request(url: String): JSONObject = requestJson(
-            url,
-            "GET",
-            null,
-            null,
-            mimoHeaders(current.sessionToken),
-            onSetCookies = { setCookies ->
-                val merged = mergeMimoCookieHeader(current.sessionToken, setCookies)
-                if (merged != current.sessionToken) {
-                    current = current.copy(sessionToken = merged)
-                    replace(context, current)
-                }
-            },
-        )
-        return if (service.authMode == BalanceAuthMode.MIMO_BALANCE) {
-            val data = unwrap(request(mimoBalanceUrl(service.endpoint)))
-            val snapshot = readMimoPayAsYouGo(data)
-            current.copy(
-                balance = formatBalance(snapshot.cash),
-                currency = "CNY",
-                detail = buildString {
-                    append("现金 ¥").append(formatBalance(snapshot.cash))
-                    snapshot.gift?.let { append(" · 赠送 ¥").append(formatBalance(it)) }
+        return try {
+            fun request(url: String): JSONObject = requestJson(
+                url,
+                "GET",
+                null,
+                null,
+                mimoHeaders(current.sessionToken),
+                onSetCookies = { setCookies ->
+                    val merged = mergeMimoCookieHeader(current.sessionToken, setCookies)
+                    if (merged != current.sessionToken) {
+                        current = current.copy(sessionToken = merged)
+                        replace(context, current)
+                    }
                 },
-                displayKind = BalanceDisplayKind.AMOUNT,
-                used = "",
-                total = "",
-                resetAt = "",
-                updatedAt = clock(),
-                lastAttemptAtMillis = System.currentTimeMillis(),
-                status = "Xiaomi MIMO 已连接",
-                health = BalanceHealth.FRESH,
             )
-        } else {
-            val detail = unwrap(request(mimoTokenPlanDetailUrl(service.endpoint)))
-            val usage = unwrap(request(mimoTokenPlanUsageUrl(service.endpoint)))
-            val snapshot = readMimoTokenPlan(detail, usage)
-            current.copy(
-                balance = formatBalance(snapshot.remaining),
-                currency = "TOKEN",
-                detail = buildString {
-                    append(snapshot.plan)
-                    append(" · 剩余 ").append(formatTokenCount(snapshot.remaining))
-                    append(" / ").append(formatTokenCount(snapshot.limit)).append(" Credits")
-                    snapshot.expiresAt.takeIf { it.isNotBlank() }?.let { append(" · 有效期至 ").append(it) }
-                },
-                displayKind = BalanceDisplayKind.TOKEN_PLAN,
-                used = formatBalance(snapshot.used),
-                total = formatBalance(snapshot.limit),
-                resetAt = snapshot.expiresAt,
-                updatedAt = clock(),
-                lastAttemptAtMillis = System.currentTimeMillis(),
-                status = "Xiaomi MIMO Token Plan",
-                health = BalanceHealth.FRESH,
-            )
+            if (service.authMode == BalanceAuthMode.MIMO_BALANCE) {
+                val data = unwrap(request(mimoBalanceUrl(service.endpoint)))
+                val snapshot = readMimoPayAsYouGo(data)
+                current.copy(
+                    balance = formatBalance(snapshot.cash),
+                    currency = "CNY",
+                    detail = buildString {
+                        append("现金 ¥").append(formatBalance(snapshot.cash))
+                        snapshot.gift?.let { append(" · 赠送 ¥").append(formatBalance(it)) }
+                    },
+                    displayKind = BalanceDisplayKind.AMOUNT,
+                    used = "",
+                    total = "",
+                    resetAt = "",
+                    updatedAt = clock(),
+                    lastAttemptAtMillis = System.currentTimeMillis(),
+                    status = "Xiaomi MIMO 已连接",
+                    health = BalanceHealth.FRESH,
+                )
+            } else {
+                val detail = unwrap(request(mimoTokenPlanDetailUrl(service.endpoint)))
+                val usage = unwrap(request(mimoTokenPlanUsageUrl(service.endpoint)))
+                val snapshot = readMimoTokenPlan(detail, usage)
+                current.copy(
+                    balance = formatBalance(snapshot.remaining),
+                    currency = "TOKEN",
+                    detail = buildString {
+                        append(snapshot.plan)
+                        append(" · 剩余 ").append(formatTokenCount(snapshot.remaining))
+                        append(" /").append(formatTokenCount(snapshot.limit)).append(" Credits")
+                        snapshot.expiresAt.takeIf { it.isNotBlank() }?.let { append(" · 有效期至 ").append(it) }
+                    },
+                    displayKind = BalanceDisplayKind.TOKEN_PLAN,
+                    used = formatBalance(snapshot.used),
+                    total = formatBalance(snapshot.limit),
+                    resetAt = snapshot.expiresAt,
+                    updatedAt = clock(),
+                    lastAttemptAtMillis = System.currentTimeMillis(),
+                    status = "Xiaomi MIMO Token Plan",
+                    health = BalanceHealth.FRESH,
+                )
+            }
+        } catch (error: Exception) {
+            if (!allowSessionRefresh || error !is BalanceHttpException || error.statusCode !in setOf(401, 403)) {
+                throw error
+            }
+            val refreshedCookie = MimoSessionRefresher.refresh(context, current.sessionToken)
+                ?.takeIf { it.isNotBlank() }
+                ?: throw error
+            val refreshed = current.copy(sessionToken = refreshedCookie)
+            replace(context, refreshed)
+            fetchMimo(context, refreshed, allowSessionRefresh = false)
         }
     }
 

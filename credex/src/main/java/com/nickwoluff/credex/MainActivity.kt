@@ -96,6 +96,8 @@ import androidx.compose.material.icons.filled.ForkRight
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LooksOne
+import androidx.compose.material.icons.filled.LooksTwo
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -107,6 +109,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.SwipeLeft
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -114,6 +117,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -3851,6 +3855,11 @@ open class MainActivity : ComponentActivity() {
         "主题" -> Icons.Filled.DarkMode
         "强调色" -> Icons.Filled.Palette
         "调色板风格" -> Icons.Filled.AutoAwesome
+        "主服务" -> Icons.Filled.LooksOne
+        "副服务" -> Icons.Filled.LooksTwo
+        "换算方式" -> Icons.Filled.DataUsage
+        "助手" -> Icons.Filled.SmartToy
+        "壁纸" -> Icons.Filled.Wallpaper
         else -> Icons.Filled.Tune
     }
 
