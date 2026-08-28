@@ -110,19 +110,18 @@ fun CredexTheme(
             content = content,
         )
     } else {
-        // 真实 Miuix 主题提供颜色、波纹和过滚动行为；MaterialTheme 仅作为
-        // 尚未迁移的余额业务控件的兼容层。
+        // MaterialTheme 仅为尚未迁移的余额业务控件提供兼容颜色；将 MiuixTheme
+        // 放在内层，确保其按压遮罩和过滚动反馈不会被 Material 的水波纹覆盖。
         val miuixMode = when (themeMode) {
             ThemeMode.SYSTEM -> ColorSchemeMode.System
             ThemeMode.LIGHT -> ColorSchemeMode.Light
             ThemeMode.DARK -> ColorSchemeMode.Dark
         }
         val controller = remember(miuixMode) { ThemeController(miuixMode) }
-        MiuixTheme(controller = controller) {
-            MaterialTheme(
-                colorScheme = if (dark) MiuixDarkScheme else MiuixLightScheme,
-                content = content,
-            )
+        MaterialTheme(
+            colorScheme = if (dark) MiuixDarkScheme else MiuixLightScheme,
+        ) {
+            MiuixTheme(controller = controller, content = content)
         }
     }
 }
