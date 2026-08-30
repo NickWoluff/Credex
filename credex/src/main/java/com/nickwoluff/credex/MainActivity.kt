@@ -1013,7 +1013,7 @@ open class MainActivity : ComponentActivity() {
                         },
                         actions = {
                             if (!isSecondaryPage) {
-                                MiuixIconButton(onClick = { showAddServices = true }, holdDownState = showAddServices) { Icon(MiuixIcons.Regular.Add, "添加服务") }
+                                MiuixIconButton(onClick = { showAddServices = true }) { Icon(MiuixIcons.Regular.Add, "添加服务") }
                                 MiuixIconButton(onClick = { openActivityPage(ActivityPage.SETTINGS) }) { Icon(MiuixIcons.Regular.Settings, "设置") }
                             }
                         },
