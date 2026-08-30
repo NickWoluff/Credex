@@ -207,13 +207,13 @@ private fun LoginSurface(
                     defaultWindowInsetsPadding = false,
                     title = title,
                     navigationIcon = {
-                        MiuixIconButton(onClick = onBack, holdDownState = true) {
+                        MiuixIconButton(onClick = onBack) {
                             Icon(MiuixIcons.Regular.Back, contentDescription = "返回")
                         }
                     },
                     actions = {
                         if (onPrimaryAction != null && primaryAction != null) {
-                            MiuixIconButton(onClick = onPrimaryAction, holdDownState = true) {
+                            MiuixIconButton(onClick = onPrimaryAction) {
                                 LoginTopActionIcon(primaryAction, useMiuixIcon = true)
                             }
                         }

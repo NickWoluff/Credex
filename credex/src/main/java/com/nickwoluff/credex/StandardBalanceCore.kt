@@ -420,7 +420,29 @@ private object BalanceSecretBox {
     }
 }
 
-private class BalanceHttpException(val statusCode: Int, message: String) : Exception(message)
+private class BalanceHttpException(
+    val statusCode: Int,
+    message: String,
+    val payload: JSONObject? = null,
+) : Exception(message)
+
+private class MimoSessionExpiredException(
+    message: String,
+    val loginUrl: String?,
+) : Exception(message)
+
+internal fun mimoSessionLoginUrl(payload: JSONObject?): String? = payload
+    ?.optString("loginUrl")
+    ?.trim()
+    ?.takeIf(String::isNotBlank)
+
+internal fun isMimoSessionExpiredPayload(payload: JSONObject): Boolean {
+    val code = payload.optInt("code", 0)
+    if (code in setOf(401, 403) || mimoSessionLoginUrl(payload) != null) return true
+    val message = payload.optString("message").trim()
+    return listOf("未登录", "登录已过期", "会话已过期", "认证失败", "unauthorized", "forbidden", "session expired")
+        .any { marker -> message.contains(marker, ignoreCase = true) }
+}
 
 /**
  * Adapter for the standard balance contract plus SiliconFlow's API-key contract:
@@ -986,7 +1008,7 @@ object StandardBalanceRepository {
             success.public()
         } catch (error: Exception) {
             val latest = requireStored(context, initial.id)
-            val authRequired = error is BalanceHttpException && error.statusCode in setOf(401, 403)
+            val authRequired = isMimoSessionAuthFailure(error)
             val failed = latest.copy(
                 status = if (authRequired) "Xiaomi MIMO 会话已过期" else "暂时无法更新",
                 health = if (authRequired) BalanceHealth.AUTH_REQUIRED else if (latest.balance != "--") BalanceHealth.CACHED else BalanceHealth.ERROR,
@@ -1019,7 +1041,7 @@ object StandardBalanceRepository {
                 },
             )
             if (service.authMode == BalanceAuthMode.MIMO_BALANCE) {
-                val data = unwrap(request(mimoBalanceUrl(service.endpoint)))
+                val data = unwrapMimo(request(mimoBalanceUrl(service.endpoint)))
                 val snapshot = readMimoPayAsYouGo(data)
                 current.copy(
                     balance = formatBalance(snapshot.cash),
@@ -1038,8 +1060,8 @@ object StandardBalanceRepository {
                     health = BalanceHealth.FRESH,
                 )
             } else {
-                val detail = unwrap(request(mimoTokenPlanDetailUrl(service.endpoint)))
-                val usage = unwrap(request(mimoTokenPlanUsageUrl(service.endpoint)))
+                val detail = unwrapMimo(request(mimoTokenPlanDetailUrl(service.endpoint)))
+                val usage = unwrapMimo(request(mimoTokenPlanUsageUrl(service.endpoint)))
                 val snapshot = readMimoTokenPlan(detail, usage)
                 current.copy(
                     balance = formatBalance(snapshot.remaining),
@@ -1061,10 +1083,15 @@ object StandardBalanceRepository {
                 )
             }
         } catch (error: Exception) {
-            if (!allowSessionRefresh || error !is BalanceHttpException || error.statusCode !in setOf(401, 403)) {
+            if (!allowSessionRefresh || !isMimoSessionAuthFailure(error)) {
                 throw error
             }
-            val refreshedCookie = MimoSessionRefresher.refresh(context, current.sessionToken)
+            val loginUrl = when (error) {
+                is MimoSessionExpiredException -> error.loginUrl
+                is BalanceHttpException -> mimoSessionLoginUrl(error.payload)
+                else -> null
+            }
+            val refreshedCookie = MimoSessionRefresher.refresh(context, current.sessionToken, loginUrl)
                 ?.takeIf { it.isNotBlank() }
                 ?: throw error
             val refreshed = current.copy(sessionToken = refreshedCookie)
@@ -1753,8 +1780,9 @@ object StandardBalanceRepository {
         val stream = if (code in 200..299) connection.inputStream else connection.errorStream
         val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
         if (code !in 200..299) {
-            val message = runCatching { JSONObject(raw).optString("message") }.getOrNull().orEmpty()
-            throw BalanceHttpException(code, message.ifBlank { "HTTP $code" })
+            val payload = runCatching { JSONObject(raw) }.getOrNull()
+            val message = payload?.optString("message").orEmpty()
+            throw BalanceHttpException(code, message.ifBlank { "HTTP $code" }, payload)
         }
         return JSONObject(raw)
     }
@@ -1808,6 +1836,22 @@ object StandardBalanceRepository {
         check(code == 0) { payload.optString("message", "请求失败") }
         return payload.optJSONObject("data") ?: payload
     }
+
+    private fun unwrapMimo(payload: JSONObject): JSONObject {
+        val code = payload.optInt("code", 0)
+        if (code != 0) {
+            val message = payload.optString("message", "Xiaomi MIMO 请求失败")
+            if (isMimoSessionExpiredPayload(payload)) {
+                throw MimoSessionExpiredException(message, mimoSessionLoginUrl(payload))
+            }
+            error(message)
+        }
+        return payload.optJSONObject("data") ?: payload
+    }
+
+    private fun isMimoSessionAuthFailure(error: Exception): Boolean =
+        error is MimoSessionExpiredException ||
+            (error is BalanceHttpException && error.statusCode in setOf(401, 403))
 
     private fun siliconFlowData(payload: JSONObject): JSONObject {
         val code = payload.optInt("code", 20000)

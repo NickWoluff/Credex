@@ -1002,19 +1002,19 @@ open class MainActivity : ComponentActivity() {
                         scrollBehavior = scrollBehavior,
                         navigationIcon = {
                             if (isSecondaryPage) {
-                                MiuixIconButton(onClick = { finish() }, holdDownState = true) {
+                                MiuixIconButton(onClick = { finish() }) {
                                     Icon(MiuixIcons.Regular.Back, contentDescription = "返回")
                                 }
                             } else if (selectedTab == AppTab.HOME) {
-                                MiuixIconButton(onClick = ::refresh, enabled = !refreshing, holdDownState = true) {
+                                MiuixIconButton(onClick = ::refresh, enabled = !refreshing) {
                                     RefreshIcon(miuix = true)
                                 }
                             }
                         },
                         actions = {
                             if (!isSecondaryPage) {
-                                MiuixIconButton(onClick = { showAddServices = true }, holdDownState = true) { Icon(MiuixIcons.Regular.Add, "添加服务") }
-                                MiuixIconButton(onClick = { openActivityPage(ActivityPage.SETTINGS) }, holdDownState = true) { Icon(MiuixIcons.Regular.Settings, "设置") }
+                                MiuixIconButton(onClick = { showAddServices = true }, holdDownState = showAddServices) { Icon(MiuixIcons.Regular.Add, "添加服务") }
+                                MiuixIconButton(onClick = { openActivityPage(ActivityPage.SETTINGS) }) { Icon(MiuixIcons.Regular.Settings, "设置") }
                             }
                         },
                     )

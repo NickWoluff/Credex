@@ -2,7 +2,9 @@ package com.nickwoluff.credex
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.math.BigDecimal
 
@@ -62,6 +64,31 @@ class MimoBalanceTest {
         assertEquals(
             "api-platform_ph=old-ph; api-platform_serviceToken=new-token; api-platform_slh=old-slh; userId=new-user",
             merged,
+        )
+    }
+
+    @Test
+    fun recognizesMimoBusinessResponseThatRequiresSessionRefresh() {
+        val payload = JSONObject(
+            """{"code":401,"loginUrl":"https://account.xiaomi.com/pass/serviceLogin?sid=api-platform"}""",
+        )
+
+        assertTrue(isMimoSessionExpiredPayload(payload))
+        assertEquals(
+            "https://account.xiaomi.com/pass/serviceLogin?sid=api-platform",
+            mimoSessionLoginUrl(payload),
+        )
+        assertFalse(isMimoSessionExpiredPayload(JSONObject("""{"code":50001,"message":"余额服务暂不可用"}""")))
+    }
+
+    @Test
+    fun acceptsOnlyTrustedMimoSessionRefreshUrls() {
+        val signedLoginUrl = "https://account.xiaomi.com/pass/serviceLogin?sid=api-platform"
+
+        assertEquals(signedLoginUrl, validatedMimoSessionRefreshUrl(signedLoginUrl))
+        assertEquals(
+            "https://platform.xiaomimimo.com/console/balance",
+            validatedMimoSessionRefreshUrl("https://example.com/steal-session"),
         )
     }
 }

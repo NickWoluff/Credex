@@ -11,6 +11,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import java.net.URI
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -28,7 +29,7 @@ internal object MimoSessionRefresher {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val refreshLock = Any()
 
-    fun refresh(context: Context, existingCookie: String): String? {
+    fun refresh(context: Context, existingCookie: String, loginUrl: String?): String? {
         if (Looper.myLooper() == Looper.getMainLooper()) return null
         synchronized(refreshLock) {
             val result = AtomicReference<String?>()
@@ -54,6 +55,11 @@ internal object MimoSessionRefresher {
                 val cookieManager = CookieManager.getInstance()
                 cookieManager.setAcceptCookie(true)
                 cookieManager.setAcceptThirdPartyCookies(webView, true)
+                val startingCookie = mergeMimoCookieValues(
+                    existingCookie,
+                    cookieManager.getCookie(ORIGIN).orEmpty(),
+                )
+                seedPlatformCookies(cookieManager, startingCookie)
                 webView.settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
@@ -65,14 +71,18 @@ internal object MimoSessionRefresher {
                     if (!active.compareAndSet(true, false)) return
                     completion.get()?.let(mainHandler::removeCallbacks)
                     cookieManager.flush()
-                    result.set(mergeMimoCookieValues(existingCookie, cookieManager.getCookie(ORIGIN).orEmpty()))
+                    result.set(mergeMimoCookieValues(startingCookie, cookieManager.getCookie(ORIGIN).orEmpty()))
                     completed.countDown()
                 }
 
                 webView.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String) {
                         super.onPageFinished(view, url)
-                        if (isConsoleUrl(url)) {
+                        val latestCookie = mergeMimoCookieValues(
+                            startingCookie,
+                            cookieManager.getCookie(ORIGIN).orEmpty(),
+                        )
+                        if (isMimoApiUrl(url) || latestCookie != startingCookie) {
                             completion.get()?.let(mainHandler::removeCallbacks)
                             val settle = Runnable { finish() }
                             completion.set(settle)
@@ -94,7 +104,7 @@ internal object MimoSessionRefresher {
                         request: WebResourceRequest,
                         errorResponse: WebResourceResponse,
                     ) {
-                        if (request.isForMainFrame && errorResponse.statusCode >= 400) finish()
+                        if (request.isForMainFrame && errorResponse.statusCode >= 500) finish()
                         super.onReceivedHttpError(view, request, errorResponse)
                     }
 
@@ -103,7 +113,7 @@ internal object MimoSessionRefresher {
                         return true
                     }
                 }
-                webView.loadUrl(BALANCE_URL)
+                webView.loadUrl(validatedMimoSessionRefreshUrl(loginUrl))
                 val timeout = Runnable { finish() }
                 completion.set(timeout)
                 mainHandler.postDelayed(timeout, LOAD_TIMEOUT_MILLIS)
@@ -127,10 +137,19 @@ internal object MimoSessionRefresher {
         }
     }
 
-    private fun isConsoleUrl(url: String): Boolean {
+    private fun isMimoApiUrl(url: String): Boolean {
         val uri = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return false
         return uri.host.equals("platform.xiaomimimo.com", ignoreCase = true) &&
-            uri.path.orEmpty().startsWith("/console")
+            uri.path.orEmpty().startsWith("/api/v1")
+    }
+
+    private fun seedPlatformCookies(cookieManager: CookieManager, cookie: String) {
+        val values = linkedMapOf<String, String>()
+        parseCookieHeader(cookie, values)
+        values.forEach { (name, value) ->
+            cookieManager.setCookie(ORIGIN, "$name=$value; Path=/; Secure")
+        }
+        cookieManager.flush()
     }
 
     private fun mergeMimoCookieValues(existing: String, latest: String): String {
@@ -162,3 +181,17 @@ private val MIMO_SESSION_COOKIE_NAMES = setOf(
     "api-platform_slh",
     "userId",
 )
+
+internal fun validatedMimoSessionRefreshUrl(candidate: String?): String {
+    val value = candidate?.trim().orEmpty()
+    if (value.isBlank()) return "https://platform.xiaomimimo.com/console/balance"
+    val uri = runCatching { URI(value) }.getOrNull()
+        ?: return "https://platform.xiaomimimo.com/console/balance"
+    val trustedHost = uri.host.equals("account.xiaomi.com", ignoreCase = true) ||
+        uri.host.equals("platform.xiaomimimo.com", ignoreCase = true)
+    return if (uri.scheme.equals("https", ignoreCase = true) && trustedHost) {
+        value
+    } else {
+        "https://platform.xiaomimimo.com/console/balance"
+    }
+}
