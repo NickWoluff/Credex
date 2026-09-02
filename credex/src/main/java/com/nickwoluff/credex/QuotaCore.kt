@@ -457,7 +457,8 @@ object CodexOAuth {
         Thread {
             runCatching {
                 ServerSocket().use { server ->
-                    server.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), 1455))
+                    // 部分模拟器上的 Android WebView 会将 localhost 解析为 IPv4。
+                    server.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 1455))
                     activeSocket = server
                     server.soTimeout = 120_000
                     onReady()
