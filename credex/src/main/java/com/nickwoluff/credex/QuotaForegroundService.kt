@@ -34,7 +34,7 @@ class QuotaForegroundService : Service() {
         createChannel()
         startForeground(NOTIFICATION_ID, notification(QuotaRepository.current(this)))
         executor = Executors.newSingleThreadScheduledExecutor().also { scheduler ->
-            scheduler.scheduleWithFixedDelay({ refreshQuota() }, 0, 15, TimeUnit.MINUTES)
+            scheduler.scheduleWithFixedDelay({ runCatching { refreshQuota() } }, 0, 15, TimeUnit.MINUTES)
         }
     }
 
@@ -70,21 +70,13 @@ class QuotaForegroundService : Service() {
             stopSelf()
             return
         }
-        val before = QuotaRepository.current(applicationContext)
-        val balanceBefore = StandardBalanceRepository.list(applicationContext)
-        val state = if (QuotaRepository.signedIn(applicationContext)) {
-            QuotaRepository.refresh(applicationContext, lease = refreshLease)
-        } else {
-            before
-        }
-        StandardBalanceRepository.refreshAll(applicationContext)
-        val balanceChanged = balanceBefore != StandardBalanceRepository.list(applicationContext)
+        val refresh = QuotaRefreshCoordinator.refreshAll(applicationContext, lease = refreshLease)
         if (!eligible(this)) {
             stopSelf()
             return
         }
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(state))
-        if (state != before || balanceChanged) {
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(refresh.state))
+        if (refresh.changed) {
             QuotaDisplayContract.notifyAll(applicationContext)
         }
     }

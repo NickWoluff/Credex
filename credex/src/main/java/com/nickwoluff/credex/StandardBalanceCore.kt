@@ -17,6 +17,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import java.util.concurrent.Executors
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -455,7 +456,9 @@ object StandardBalanceRepository {
     private const val MIN_REFRESH_MILLIS = 60_000L
     private const val KIMI_OAUTH_HOST = "https://auth.kimi.com"
     private const val KIMI_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"
+    private const val MAX_PARALLEL_REFRESHES = 8
     private val lock = Any()
+    private val refreshExecutor = Executors.newFixedThreadPool(MAX_PARALLEL_REFRESHES)
     private val clockFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
 
     fun list(context: Context): List<BalanceService> = stored(context, decryptSecrets = false)
@@ -1589,7 +1592,18 @@ object StandardBalanceRepository {
         java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
 
     fun refreshAll(context: Context, force: Boolean = false) {
-        list(context).forEach { runCatching { refresh(context, it.id, force) } }
+        val tasks = list(context).map { service ->
+            refreshExecutor.submit {
+                runCatching { refresh(context, service.id, force) }
+            }
+        }
+        try {
+            tasks.forEach { it.get() }
+        } catch (error: InterruptedException) {
+            tasks.forEach { it.cancel(true) }
+            Thread.currentThread().interrupt()
+            throw error
+        }
     }
 
     private fun refreshApiKey(context: Context, initial: StoredBalanceService, force: Boolean): BalanceService {
@@ -2078,7 +2092,7 @@ object StandardBalanceRepository {
         }
     }
 
-    private fun replace(context: Context, value: StoredBalanceService) {
+    private fun replace(context: Context, value: StoredBalanceService) = synchronized(lock) {
         saveStored(context, stored(context).map { if (it.id == value.id) value else it })
     }
 

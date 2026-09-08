@@ -245,7 +245,7 @@ object QuotaRepository {
     fun setBackgroundEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit { putBoolean(BACKGROUND, enabled) }
         if (enabled && (signedIn(context) || StandardBalanceRepository.hasAuthenticatedService(context))) {
-            QuotaRefreshScheduler.schedule(context)
+            QuotaRefreshScheduler.schedule(context, resetFallback = true)
         } else if (!enabled) {
             QuotaRefreshScheduler.cancel(context)
         }
@@ -254,6 +254,9 @@ object QuotaRepository {
     fun setNotificationSyncEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit { putBoolean(NOTIFICATION_SYNC, enabled) }
         if (!enabled) QuotaForegroundService.stop(context)
+        if (backgroundEnabled(context) && (signedIn(context) || StandardBalanceRepository.hasAuthenticatedService(context))) {
+            QuotaRefreshScheduler.schedule(context, resetFallback = true)
+        }
     }
     fun saveTokens(context: Context, tokens: OAuthTokens) = saveTokens(context, tokens, expectedEpoch = null)
 

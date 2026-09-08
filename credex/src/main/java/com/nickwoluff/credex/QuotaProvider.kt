@@ -84,13 +84,9 @@ class QuotaProvider : ContentProvider() {
         if (!refreshing.compareAndSet(false, true)) return
         val appContext = context.applicationContext
         executor.execute {
-            val beforeState = QuotaRepository.current(appContext)
-            val beforeBalances = StandardBalanceRepository.list(appContext)
             try {
-                val afterState = if (hasCodex) QuotaRepository.refresh(appContext) else beforeState
-                if (hasBalance) StandardBalanceRepository.refreshAll(appContext)
-                val changed = afterState != beforeState || beforeBalances != StandardBalanceRepository.list(appContext)
-                if (changed) QuotaDisplayContract.notifyAll(appContext)
+                val refresh = QuotaRefreshCoordinator.refreshAll(appContext)
+                if (refresh.changed) QuotaDisplayContract.notifyAll(appContext)
             } finally {
                 refreshing.set(false)
             }

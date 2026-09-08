@@ -246,6 +246,24 @@ private enum class AppTab { HOME, CONFIGURATION }
 
 private enum class AddBrand { CODEX, DEEPSEEK, GLM, KIMI, OPENCODE, SILICON_FLOW, VOLCENGINE, MIMO, STANDARD }
 
+private data class AddBrandEntry(
+    val brand: AddBrand,
+    val platform: PlatformBrand,
+    val subtitle: String,
+)
+
+private val ADD_BRAND_ENTRIES = listOf(
+    AddBrandEntry(AddBrand.DEEPSEEK, PlatformBrand.DEEPSEEK, "账户余额"),
+    AddBrandEntry(AddBrand.GLM, PlatformBrand.GLM, "账户余额 | Coding Plan"),
+    AddBrandEntry(AddBrand.KIMI, PlatformBrand.KIMI, "账户余额 | Coding Plan"),
+    AddBrandEntry(AddBrand.CODEX, PlatformBrand.OPENAI_CODEX, "5 小时配额 | 周配额"),
+    AddBrandEntry(AddBrand.OPENCODE, PlatformBrand.OPENCODE, "Zen 账户余额 | Go 配额"),
+    AddBrandEntry(AddBrand.SILICON_FLOW, PlatformBrand.SILICON_FLOW, "账户余额"),
+    AddBrandEntry(AddBrand.VOLCENGINE, PlatformBrand.VOLCENGINE, "账户余额 | Coding Plan | Agent Plan"),
+    AddBrandEntry(AddBrand.MIMO, PlatformBrand.XIAOMI_MIMO, "账户余额 | Token Plan"),
+    AddBrandEntry(AddBrand.STANDARD, PlatformBrand.CUSTOM_ENDPOINT, "账户余额"),
+)
+
 private enum class ActivityPage(val value: String) {
     ROOT("root"),
     SETTINGS("settings"),
@@ -612,13 +630,6 @@ open class MainActivity : ComponentActivity() {
                 availableUpdate?.let { UpdateDialog(it) }
             }
         }
-        if (activityPage == ActivityPage.ROOT && backgroundEnabled) {
-            window.decorView.post {
-                if (QuotaRepository.signedIn(this) || StandardBalanceRepository.hasAuthenticatedService(this)) {
-                    prepareLiveSync()
-                }
-            }
-        }
         if (activityPage == ActivityPage.ROOT && autoUpdateCheck && !updateCheckStarted) {
             updateCheckStarted = true
             window.decorView.post { checkForUpdate(manual = false) }
@@ -720,6 +731,11 @@ open class MainActivity : ComponentActivity() {
                 ContextCompat.RECEIVER_NOT_EXPORTED,
             )
             receiverRegistered = true
+        }
+        if (activityPage == ActivityPage.ROOT && backgroundEnabled &&
+            (QuotaRepository.signedIn(this) || StandardBalanceRepository.hasAuthenticatedService(this))
+        ) {
+            prepareLiveSync()
         }
     }
 
@@ -1935,7 +1951,12 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun ConfigurationScreen(modifier: Modifier = Modifier) {
         val codexConnected = QuotaRepository.signedIn(this@MainActivity)
-        val brands = balanceServices.map { brandLabel(it.authMode) }.distinct()
+        val configuredPlatforms = balanceServices.mapTo(linkedSetOf()) { platformBrand(it.authMode) }
+        val platforms = ADD_BRAND_ENTRIES
+            .map(AddBrandEntry::platform)
+            .filter { platform ->
+                if (platform == PlatformBrand.OPENAI_CODEX) codexConnected else platform in configuredPlatforms
+            }
         Column(
             modifier
                 .fillMaxSize()
@@ -1944,34 +1965,28 @@ open class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             SettingsSection("已添加服务") {
-                if (codexConnected) {
-                    SettingsActionRow(
-                        icon = if (showProviderIcons) ({ PlatformLogo(PlatformBrand.OPENAI_CODEX, 26.dp) }) else null,
-                        title = "OpenAI Codex",
-                        subtitle = "5 小时配额 | 周配额",
-                        onClick = { openActivityPage(ActivityPage.CONFIGURATION, "OpenAI Codex") },
-                        keepLeadingInMiuix = showProviderIcons,
-                    )
-                    if (brands.isNotEmpty()) SettingsDivider()
-                }
-                brands.forEachIndexed { index, brand ->
-                    val platform = PlatformBrand.entries.first { it.displayName == brand }
-                    val includedServices = balanceServices
-                        .asSequence()
-                        .filter { brandLabel(it.authMode) == brand }
-                        .map { serviceTypeLabel(it.authMode) }
-                        .distinct()
-                        .joinToString(" | ")
+                platforms.forEachIndexed { index, platform ->
+                    val brand = platform.displayName
+                    val subtitle = if (platform == PlatformBrand.OPENAI_CODEX) {
+                        "5 小时配额 | 周配额"
+                    } else {
+                        balanceServices
+                            .asSequence()
+                            .filter { platformBrand(it.authMode) == platform }
+                            .map { serviceTypeLabel(it.authMode) }
+                            .distinct()
+                            .joinToString(" | ")
+                    }
                     SettingsActionRow(
                         icon = if (showProviderIcons) ({ PlatformLogo(platform, 26.dp) }) else null,
                         title = brand,
-                        subtitle = includedServices,
+                        subtitle = subtitle,
                         onClick = { openActivityPage(ActivityPage.CONFIGURATION, brand) },
                         keepLeadingInMiuix = showProviderIcons,
                     )
-                    if (index + 1 < brands.size) SettingsDivider()
+                    if (index + 1 < platforms.size) SettingsDivider()
                 }
-                if (!codexConnected && brands.isEmpty()) {
+                if (platforms.isEmpty()) {
                     Text("还没有添加服务", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
                 }
             }
@@ -2073,15 +2088,9 @@ open class MainActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.spacedBy(if (uiStyle == UiStyle.MATERIAL) 3.dp else 8.dp),
                     ) {
                         if (step == null) {
-                            AddBrandOption("DeepSeek", "账户余额", AddBrand.DEEPSEEK, 0, 9)
-                            AddBrandOption("GLM", "账户余额 | Coding Plan", AddBrand.GLM, 1, 9)
-                            AddBrandOption("Kimi", "账户余额 | Coding Plan", AddBrand.KIMI, 2, 9)
-                            AddBrandOption("OpenAI Codex", "5 小时配额 | 周配额", AddBrand.CODEX, 3, 9)
-                            AddBrandOption("OpenCode", "Zen 账户余额 | Go 配额", AddBrand.OPENCODE, 4, 9)
-                            AddBrandOption("SiliconFlow", "账户余额", AddBrand.SILICON_FLOW, 5, 9)
-                            AddBrandOption("火山引擎", "账户余额 | Coding Plan | Agent Plan", AddBrand.VOLCENGINE, 6, 9)
-                            AddBrandOption("Xiaomi MIMO", "账户余额 | Token Plan", AddBrand.MIMO, 7, 9)
-                            AddBrandOption("自定义接口", "账户余额", AddBrand.STANDARD, 8, 9)
+                            ADD_BRAND_ENTRIES.forEachIndexed { index, entry ->
+                                AddBrandOption(entry, index, ADD_BRAND_ENTRIES.size)
+                            }
                         } else when (step) {
                             AddBrand.CODEX -> AddServiceOption("Codex 用量与配额", "内置登录 | 5 小时配额 | 周配额", 0, 1) {
                                 showAddServices = false
@@ -2208,25 +2217,14 @@ open class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun AddBrandOption(title: String, subtitle: String, brand: AddBrand, index: Int, total: Int) {
-        val platform = when (brand) {
-            AddBrand.CODEX -> PlatformBrand.OPENAI_CODEX
-            AddBrand.DEEPSEEK -> PlatformBrand.DEEPSEEK
-            AddBrand.SILICON_FLOW -> PlatformBrand.SILICON_FLOW
-            AddBrand.VOLCENGINE -> PlatformBrand.VOLCENGINE
-            AddBrand.OPENCODE -> PlatformBrand.OPENCODE
-            AddBrand.KIMI -> PlatformBrand.KIMI
-            AddBrand.GLM -> PlatformBrand.GLM
-            AddBrand.MIMO -> PlatformBrand.XIAOMI_MIMO
-            AddBrand.STANDARD -> PlatformBrand.CUSTOM_ENDPOINT
-        }
+    private fun AddBrandOption(entry: AddBrandEntry, index: Int, total: Int) {
         AddServiceOption(
-            title = title,
-            subtitle = subtitle,
+            title = entry.platform.displayName,
+            subtitle = entry.subtitle,
             index = index,
             total = total,
-            leading = if (showProviderIcons) ({ PlatformLogo(platform, 28.dp) }) else null,
-            onClick = { addBrand = brand },
+            leading = if (showProviderIcons) ({ PlatformLogo(entry.platform, 28.dp) }) else null,
+            onClick = { addBrand = entry.brand },
         )
     }
 
@@ -3992,6 +3990,7 @@ open class MainActivity : ComponentActivity() {
         val hasAnyAuthenticatedService = QuotaRepository.signedIn(this) || StandardBalanceRepository.hasAuthenticatedService(this)
         if (!hasAnyAuthenticatedService || !backgroundEnabled) return
         QuotaRefreshScheduler.schedule(this)
+        QuotaRefreshScheduler.requestImmediate(this, force = false)
         if (!notificationSyncEnabled) {
             QuotaForegroundService.stop(this)
             serviceRunning = false
@@ -4401,9 +4400,7 @@ open class MainActivity : ComponentActivity() {
         message = "正在更新…"
         Thread {
             val result = runCatching {
-                if (hasCodex) QuotaRepository.refresh(this, force = true)
-                StandardBalanceRepository.refreshAll(this, force = true)
-                QuotaRepository.current(this)
+                QuotaRefreshCoordinator.refreshAll(this, force = true).state
             }
             runOnUiThread {
                 refreshing = false
