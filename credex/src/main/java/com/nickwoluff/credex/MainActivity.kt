@@ -3432,7 +3432,7 @@ open class MainActivity : ComponentActivity() {
                             )
                         }
                         balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD -> {
-                            Text("登录方式：邮箱密码", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                            Text("登录方式：邮箱 / 用户名 + 密码", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                         }
                         balanceAuthMode == BalanceAuthMode.API_KEY -> {
                             Text("登录方式：API Key", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
@@ -3463,7 +3463,7 @@ open class MainActivity : ComponentActivity() {
                         AppTextField(
                             value = balanceEmailInput,
                             onValueChange = { balanceEmailInput = it; balanceEditorError = "" },
-                            label = "邮箱",
+                            label = "邮箱 / 用户名",
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -3535,7 +3535,7 @@ open class MainActivity : ComponentActivity() {
                             BalanceAuthMode.KIMI_BALANCE -> "Kimi 使用 GET /v1/users/me/balance 读取账户余额；API Key 会使用 Android Keystore 加密保存。"
                             BalanceAuthMode.GLM_BALANCE -> "通过智谱开放平台控制台会话读取账户余额。"
                             BalanceAuthMode.GLM_CODING_PLAN -> "读取 GLM Coding Plan 的 5 小时与周配额。"
-                            BalanceAuthMode.EMAIL_PASSWORD -> "自定义接口的 Endpoint 建议填写完整的 https://…/api/v1。应用会自动请求 /auth/login、/auth/refresh 和 /user/profile。邮箱和密码会使用 Android Keystore 加密保存。"
+                            BalanceAuthMode.EMAIL_PASSWORD -> "自定义接口默认请求 /auth/login、/auth/refresh 和 /user/profile；当 Endpoint 为 zhiyaoapi.top 时，会自动改用 /user/login 和 /user/me?include_statistics=false。账号和密码会使用 Android Keystore 加密保存。"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -4269,7 +4269,7 @@ open class MainActivity : ComponentActivity() {
         val modeChanged = existing != null && existing.authMode != selectedAuthMode
         val needsLogin = existing == null || endpointChanged || modeChanged || existing.health == BalanceHealth.NOT_CONNECTED || existing.health == BalanceHealth.AUTH_REQUIRED
         if (selectedAuthMode == BalanceAuthMode.EMAIL_PASSWORD && account.isBlank() && needsLogin) {
-            balanceEditorError = "请输入邮箱"
+            balanceEditorError = "请输入邮箱或用户名"
             return
         }
         val browserAuth = selectedAuthMode.usesBrowserLogin()

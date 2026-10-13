@@ -446,7 +446,7 @@ internal fun isMimoSessionExpiredPayload(payload: JSONObject): Boolean {
 }
 
 /**
- * Adapter for the standard balance contract plus SiliconFlow's API-key contract:
+ * Adapter for the standard balance contract plus platform-specific balance contracts:
  * POST /auth/login, POST /auth/refresh, GET /user/profile, or GET /user/info.
  * Tokens and passwords never leave this repository and are not exposed to UI surfaces.
  */
@@ -456,6 +456,7 @@ object StandardBalanceRepository {
     private const val MIN_REFRESH_MILLIS = 60_000L
     private const val KIMI_OAUTH_HOST = "https://auth.kimi.com"
     private const val KIMI_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"
+    private const val USERNAME_PASSWORD_CONTRACT = "username_password"
     private const val MAX_PARALLEL_REFRESHES = 8
     private val lock = Any()
     private val refreshExecutor = Executors.newFixedThreadPool(MAX_PARALLEL_REFRESHES)
@@ -831,9 +832,15 @@ object StandardBalanceRepository {
         // without asking the user to type them again.
         val withCredentials = service.copy(email = cleanEmail, password = passwordText)
         replace(context, withCredentials)
-        val body = JSONObject().put("email", cleanEmail).put("password", passwordText)
-        val payload = requestJson(join(service.endpoint, "/auth/login"), "POST", body, null)
-        val data = unwrap(payload)
+        if (usesUsernameLoginContract(service.endpoint)) {
+            return loginUsernamePassword(context, service, cleanEmail, passwordText)
+        }
+        val data = try {
+            loginStandardEmailPassword(service, cleanEmail, passwordText)
+        } catch (error: BalanceHttpException) {
+            if (error.statusCode != 404) throw error
+            loginUsernamePassword(context, service, cleanEmail, passwordText).let { return it }
+        }
         val access = data.optString("access_token")
         check(access.isNotBlank()) { "登录响应中没有 access_token" }
         val refresh = data.optString("refresh_token")
@@ -848,6 +855,50 @@ object StandardBalanceRepository {
             refreshToken = refresh,
             expiresAtMillis = now + expiresIn * 1_000L,
             balance = balance ?: service.balance,
+            updatedAt = clock(),
+            lastAttemptAtMillis = now,
+            status = "已连接",
+            health = BalanceHealth.FRESH,
+        )
+        replace(context, next)
+        QuotaRefreshScheduler.schedule(context)
+        notifyChanged(context)
+        return next.public()
+    }
+
+    private fun loginStandardEmailPassword(
+        service: StoredBalanceService,
+        email: String,
+        password: String,
+    ): JSONObject {
+        val body = JSONObject().put("email", email).put("password", password)
+        return unwrap(requestJson(join(service.endpoint, "/auth/login"), "POST", body, null))
+    }
+
+    private fun loginUsernamePassword(
+        context: Context,
+        service: StoredBalanceService,
+        username: String,
+        password: String,
+    ): BalanceService {
+        val body = JSONObject().put("username", username).put("password", password)
+        val data = unwrap(requestJson(join(service.endpoint, "/user/login"), "POST", body, null))
+        val access = data.optString("access_token")
+        check(access.isNotBlank()) { "登录响应中没有 access_token" }
+        val refresh = data.optString("refresh_token")
+        val expiresIn = data.optLong("expires_in", 86_400L).coerceAtLeast(60L)
+        val profile = fetchUsernameProfile(service.endpoint, access)
+        val balance = readBalance(profile) ?: readBalance(profile.optJSONObject("user"))
+        val now = System.currentTimeMillis()
+        val next = service.copy(
+            email = username,
+            password = password,
+            accessToken = access,
+            refreshToken = refresh,
+            subjectId = USERNAME_PASSWORD_CONTRACT,
+            expiresAtMillis = if (refresh.isBlank()) Long.MAX_VALUE else now + expiresIn * 1_000L,
+            balance = balance ?: service.balance,
+            currency = "USD",
             updatedAt = clock(),
             lastAttemptAtMillis = now,
             status = "已连接",
@@ -1150,9 +1201,11 @@ object StandardBalanceRepository {
         replace(context, initial.copy(lastAttemptAtMillis = now))
         return try {
             var current = requireStored(context, id)
-            if (current.expiresAtMillis in 1..(now + 60_000L)) current = refreshTokens(context, current)
+            if (current.refreshToken.isNotBlank() && current.expiresAtMillis in 1..(now + 60_000L)) {
+                current = refreshTokens(context, current)
+            }
             var payload = try {
-                requestJson(join(current.endpoint, "/user/profile"), "GET", null, current.accessToken)
+                fetchEmailPasswordProfile(current)
             } catch (error: BalanceHttpException) {
                 if (error.statusCode != 401) throw error
                 current = if (current.refreshToken.isNotBlank()) {
@@ -1164,7 +1217,7 @@ object StandardBalanceRepository {
                 } else {
                     throw error
                 }
-                requestJson(join(current.endpoint, "/user/profile"), "GET", null, current.accessToken)
+                fetchEmailPasswordProfile(current)
             }
             val profile = unwrap(payload)
             val balance = readBalance(profile) ?: readBalance(profile.optJSONObject("user"))
@@ -1963,6 +2016,8 @@ object StandardBalanceRepository {
         val value = when {
             json.has("balance") && !json.isNull("balance") -> json.opt("balance")
             json.has("available_balance") && !json.isNull("available_balance") -> json.opt("available_balance")
+            json.has("fixed_balance") && !json.isNull("fixed_balance") -> json.opt("fixed_balance")
+            json.has("fixedBalance") && !json.isNull("fixedBalance") -> json.opt("fixedBalance")
             else -> null
         } ?: return null
         return when (value) {
@@ -1996,6 +2051,25 @@ object StandardBalanceRepository {
     }
 
     private fun join(endpoint: String, path: String) = endpoint.trimEnd('/') + "/" + path.trimStart('/')
+
+    private fun fetchEmailPasswordProfile(service: StoredBalanceService): JSONObject =
+        if (service.subjectId == USERNAME_PASSWORD_CONTRACT || usesUsernameLoginContract(service.endpoint)) {
+            fetchUsernameProfile(service.endpoint, service.accessToken)
+        } else {
+            requestJson(join(service.endpoint, "/user/profile"), "GET", null, service.accessToken)
+        }
+
+    private fun fetchUsernameProfile(endpoint: String, accessToken: String): JSONObject = requestJson(
+        join(endpoint, "/user/me?include_statistics=false"),
+        "GET",
+        null,
+        accessToken,
+    )
+
+    private fun usesUsernameLoginContract(endpoint: String): Boolean = runCatching {
+        URL(endpoint).host.equals("zhiyaoapi.top", ignoreCase = true) ||
+            URL(endpoint).host.endsWith(".zhiyaoapi.top", ignoreCase = true)
+    }.getOrDefault(false)
 
     /**
      * Keep SiliconFlow's official endpoint compatible with CC Switch:
