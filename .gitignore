@@ -6,6 +6,7 @@ credex/release/
 captures/
 .externalNativeBuild/
 .cxx/
+output/
 *.apk
 *.aab
 *.apks
@@ -39,6 +40,7 @@ credex/design/widget-preview-2x2.png
 credex/design/widget-preview-4x2.png
 
 # Local logs and temporary files
+tmp/
 *.log
 *.tmp
 

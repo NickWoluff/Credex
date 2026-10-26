@@ -116,12 +116,6 @@ enum class MaterialAccent { BLUE, PURPLE, GREEN, ORANGE, RED }
 
 enum class MaterialPaletteStyle { TONAL_SPOT, VIBRANT, EXPRESSIVE, NEUTRAL }
 
-/** The two rear-display hosts that can each show one selected balance service. */
-enum class RearDisplaySurface {
-    ASSISTANT,
-    WALLPAPER,
-}
-
 /** Credential-free presentation data used by the app UI. */
 data class BalanceService(
     val id: String,
@@ -197,13 +191,12 @@ object RearDisplayPreferences {
     const val CODEX_ID = WidgetSelectionPreferences.CODEX_ID
     private const val PREFS = "rear_display_preferences"
     private const val ASSISTANT_SERVICE_ID = "assistant_service_id"
-    private const val WALLPAPER_SERVICE_ID = "wallpaper_service_id"
 
-    fun selectedServiceId(context: Context, surface: RearDisplaySurface): String =
-        prefs(context).getString(key(surface), "").orEmpty()
+    fun selectedServiceId(context: Context): String =
+        prefs(context).getString(ASSISTANT_SERVICE_ID, "").orEmpty()
 
-    fun setSelectedService(context: Context, surface: RearDisplaySurface, serviceId: String) {
-        prefs(context).edit { putString(key(surface), serviceId) }
+    fun setSelectedService(context: Context, serviceId: String) {
+        prefs(context).edit { putString(ASSISTANT_SERVICE_ID, serviceId) }
     }
 
     fun ensureDefaults(
@@ -224,15 +217,7 @@ object RearDisplayPreferences {
             if (preferences.getString(ASSISTANT_SERVICE_ID, "").orEmpty() !in validIds) {
                 putString(ASSISTANT_SERVICE_ID, fallbackId)
             }
-            if (preferences.getString(WALLPAPER_SERVICE_ID, "").orEmpty() !in validIds) {
-                putString(WALLPAPER_SERVICE_ID, fallbackId)
-            }
         }
-    }
-
-    private fun key(surface: RearDisplaySurface): String = when (surface) {
-        RearDisplaySurface.ASSISTANT -> ASSISTANT_SERVICE_ID
-        RearDisplaySurface.WALLPAPER -> WALLPAPER_SERVICE_ID
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -465,10 +450,10 @@ object StandardBalanceRepository {
     fun list(context: Context): List<BalanceService> = stored(context, decryptSecrets = false)
         .map { it.public() }
 
-    fun forRearSurface(context: Context, surface: RearDisplaySurface, limit: Int): List<BalanceService> {
+    fun forRearDisplay(context: Context, limit: Int): List<BalanceService> {
         val services = list(context)
         RearDisplayPreferences.ensureDefaults(context, services)
-        val selectedId = RearDisplayPreferences.selectedServiceId(context, surface)
+        val selectedId = RearDisplayPreferences.selectedServiceId(context)
         return services
             .filter { it.id == selectedId }
             .take(limit.coerceAtLeast(0))

@@ -117,7 +117,6 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -461,7 +460,6 @@ open class MainActivity : ComponentActivity() {
     private var widgetHeightInput by mutableStateOf("")
     private var widgetVerticalOffset by mutableIntStateOf(0)
     private var rearAssistantServiceId by mutableStateOf("")
-    private var rearWallpaperServiceId by mutableStateOf("")
     private var autoUpdateCheck by mutableStateOf(true)
     private var availableUpdate by mutableStateOf<AvailableUpdate?>(null)
     private var checkingForUpdate by mutableStateOf(false)
@@ -2412,13 +2410,12 @@ open class MainActivity : ComponentActivity() {
         )
         val optionLabels = options.map(WidgetServiceOption::label)
         val assistantIndex = options.indexOfFirst { it.id == rearAssistantServiceId }.coerceAtLeast(0)
-        val wallpaperIndex = options.indexOfFirst { it.id == rearWallpaperServiceId }.coerceAtLeast(0)
         Column(
             modifier.fillMaxSize().appVerticalScroll().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SettingsTextCard(
-                "背屏功能当前仅适配 小米17 Pro 系列，且需借助 Xposed 模块导入；若有需求，可前往项目地址 README 获取背屏资源与使用方法。",
+                "背屏功能当前仅适配 小米17/18 Pro 系列，且需借助 Xposed 模块导入；若有需求，可前往项目地址 README 获取背屏应用卡资源与使用方法。",
             )
             SettingsCard {
                 if (options.isEmpty()) {
@@ -2431,34 +2428,16 @@ open class MainActivity : ComponentActivity() {
                     )
                 } else {
                     DropdownSelectionPreference(
-                        title = "助手",
+                        title = "应用卡",
                         summary = options.getOrNull(assistantIndex)?.label.orEmpty(),
-                        subtitle = "Assistant 背屏显示的服务",
+                        subtitle = "背屏应用卡显示的服务",
                         items = optionLabels,
                         selectedIndex = assistantIndex,
                         onSelected = { index ->
                             rearAssistantServiceId = options.getOrNull(index)?.id.orEmpty()
                             RearDisplayPreferences.setSelectedService(
                                 this@MainActivity,
-                                RearDisplaySurface.ASSISTANT,
                                 rearAssistantServiceId,
-                            )
-                            QuotaDisplayContract.notifyAll(this@MainActivity)
-                        },
-                    )
-                    SettingsDivider()
-                    DropdownSelectionPreference(
-                        title = "壁纸",
-                        summary = options.getOrNull(wallpaperIndex)?.label.orEmpty(),
-                        subtitle = "Wallpaper 背屏显示的服务",
-                        items = optionLabels,
-                        selectedIndex = wallpaperIndex,
-                        onSelected = { index ->
-                            rearWallpaperServiceId = options.getOrNull(index)?.id.orEmpty()
-                            RearDisplayPreferences.setSelectedService(
-                                this@MainActivity,
-                                RearDisplaySurface.WALLPAPER,
-                                rearWallpaperServiceId,
                             )
                             QuotaDisplayContract.notifyAll(this@MainActivity)
                         },
@@ -3856,8 +3835,7 @@ open class MainActivity : ComponentActivity() {
         "主服务" -> Icons.Filled.LooksOne
         "副服务" -> Icons.Filled.LooksTwo
         "换算方式" -> Icons.Filled.DataUsage
-        "助手" -> Icons.Filled.SmartToy
-        "壁纸" -> Icons.Filled.Wallpaper
+        "应用卡" -> Icons.Filled.SmartToy
         else -> Icons.Filled.Tune
     }
 
@@ -4068,21 +4046,9 @@ open class MainActivity : ComponentActivity() {
         widgetTokenUnitSystem = WidgetTokenDisplayPreferences.unitSystem(this)
         widgetHeightInput = WidgetHeightPreferences.customInput(this)
         widgetVerticalOffset = WidgetHeightPreferences.verticalOffsetDp(this)
-        rearAssistantServiceId = RearDisplayPreferences.selectedServiceId(this, RearDisplaySurface.ASSISTANT)
-        rearWallpaperServiceId = RearDisplayPreferences.selectedServiceId(this, RearDisplaySurface.WALLPAPER)
+        rearAssistantServiceId = RearDisplayPreferences.selectedServiceId(this)
         autoUpdateCheck = UpdatePreferences.autoCheck(this)
         loadThemePreferences()
-    }
-
-    private fun rearDisplayServiceName(surface: RearDisplaySurface): String {
-        val selectedId = when (surface) {
-            RearDisplaySurface.ASSISTANT -> rearAssistantServiceId
-            RearDisplaySurface.WALLPAPER -> rearWallpaperServiceId
-        }
-        if (selectedId == RearDisplayPreferences.CODEX_ID) return "OpenAI Codex · 配额"
-        return balanceServices.firstOrNull { it.id == selectedId }
-            ?.let(::widgetPickerServiceLabel)
-            ?: "未选择"
     }
 
     private fun widgetServiceOptions(): List<WidgetServiceOption> = widgetPickerServiceOptions(
@@ -4144,8 +4110,7 @@ open class MainActivity : ComponentActivity() {
                 services = it,
                 codexAvailable = QuotaRepository.signedIn(this),
             )
-            rearAssistantServiceId = RearDisplayPreferences.selectedServiceId(this, RearDisplaySurface.ASSISTANT)
-            rearWallpaperServiceId = RearDisplayPreferences.selectedServiceId(this, RearDisplaySurface.WALLPAPER)
+            rearAssistantServiceId = RearDisplayPreferences.selectedServiceId(this)
         }
         snapshot.showCodexQuota?.let { showCodexQuota = it }
         snapshot.showHealthStatus?.let { showHealthStatus = it }
