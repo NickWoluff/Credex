@@ -180,6 +180,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -438,6 +439,7 @@ open class MainActivity : ComponentActivity() {
     private var balanceIncludeVouchers by mutableStateOf(false)
     private var balanceIncludeGranted by mutableStateOf(true)
     private var balanceEditorError by mutableStateOf("")
+    private var balanceAdaptationFailed by mutableStateOf(false)
     private var balanceEditorBusy by mutableStateOf(false)
     private var deletingBalanceServiceId by mutableStateOf<String?>(null)
     private var pendingSiliconFlowLoginServiceId: String? = null
@@ -3378,6 +3380,7 @@ open class MainActivity : ComponentActivity() {
 
     @Composable
     private fun BalanceServiceEditorDialog() {
+        val uriHandler = LocalUriHandler.current
         StyleAlertDialog(
             title = if (editingBalanceServiceId == null) "添加服务" else "编辑服务",
             summary = "配置服务连接和认证方式。凭据仅保存在本机加密存储中。",
@@ -3390,10 +3393,36 @@ open class MainActivity : ComponentActivity() {
                         label = "名称",
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) {
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(
+                                "API 根地址",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                "这里填写服务根地址，不要填写登录或余额接口。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "查看已适配的 API 根地址",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable {
+                                    uriHandler.openUri(CustomEndpointCatalog.DOCUMENTATION_URL)
+                                },
+                            )
+                        }
+                    }
                     AppTextField(
                         value = balanceEndpointInput,
-                        onValueChange = { balanceEndpointInput = it; balanceEditorError = "" },
-                        label = "Endpoint（API 根地址）",
+                        onValueChange = {
+                            balanceEndpointInput = it
+                            balanceEditorError = ""
+                            balanceAdaptationFailed = false
+                        },
+                        label = "API 根地址",
                         placeholder = "https://example.com/api/v1",
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -3498,6 +3527,15 @@ open class MainActivity : ComponentActivity() {
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
+                    if (balanceAdaptationFailed) {
+                        AppTextButton(
+                            text = "前往 GitHub 发布适配 Issue",
+                            onClick = {
+                                uriHandler.openUri(CustomEndpointCatalog.issueUrl(balanceEndpointInput))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     Text(
                         when (balanceAuthMode) {
                             BalanceAuthMode.API_KEY -> "API Key 模式读取 API 余额 data.totalBalance。Endpoint 建议填写完整的 https://api.siliconflow.cn/v1；API Key 会使用 Android Keystore 加密保存。"
@@ -3514,7 +3552,7 @@ open class MainActivity : ComponentActivity() {
                             BalanceAuthMode.KIMI_BALANCE -> "Kimi 使用 GET /v1/users/me/balance 读取账户余额；API Key 会使用 Android Keystore 加密保存。"
                             BalanceAuthMode.GLM_BALANCE -> "通过智谱开放平台控制台会话读取账户余额。"
                             BalanceAuthMode.GLM_CODING_PLAN -> "读取 GLM Coding Plan 的 5 小时与周配额。"
-                            BalanceAuthMode.EMAIL_PASSWORD -> "自定义接口默认请求 /auth/login、/auth/refresh 和 /user/profile；当 Endpoint 为 zhiyaoapi.top 时，会自动改用 /user/login 和 /user/me?include_statistics=false。账号和密码会使用 Android Keystore 加密保存。"
+                            BalanceAuthMode.EMAIL_PASSWORD -> "已知根地址会使用其固定接口分类；其它根地址会依次尝试标准邮箱密码接口、用户名密码接口和 New API 接口。只有登录成功且余额可解析时才会保存连接结果。账号和密码会使用 Android Keystore 加密保存。"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -4201,6 +4239,7 @@ open class MainActivity : ComponentActivity() {
         balanceIncludeVouchers = if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) service?.includeVouchers == true else false
         balanceIncludeGranted = if (balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) service?.includeGrantedBalance != false else true
         balanceEditorError = ""
+        balanceAdaptationFailed = false
         balanceEditorBusy = false
         showBalanceEditor = true
     }
@@ -4218,6 +4257,7 @@ open class MainActivity : ComponentActivity() {
         balanceIncludeVouchers = false
         balanceIncludeGranted = true
         balanceEditorError = ""
+        balanceAdaptationFailed = false
     }
 
     private fun saveBalanceService() {
@@ -4230,6 +4270,7 @@ open class MainActivity : ComponentActivity() {
         val editing = editingBalanceServiceId
         val existing = editing?.let { id -> balanceServices.firstOrNull { it.id == id } }
         balanceEditorError = ""
+        balanceAdaptationFailed = false
         val endpointChanged = existing != null && existing.endpoint.trimEnd('/') != endpoint.trimEnd('/')
         val modeChanged = existing != null && existing.authMode != selectedAuthMode
         val needsLogin = existing == null || endpointChanged || modeChanged || existing.health == BalanceHealth.NOT_CONNECTED || existing.health == BalanceHealth.AUTH_REQUIRED
@@ -4315,7 +4356,8 @@ open class MainActivity : ComponentActivity() {
                 }.onFailure {
                     loadBalanceServices()
                     balancePasswordInput = secret
-                    balanceEditorError = "登录失败：${it.message ?: "请检查邮箱、密码和 Endpoint"}"
+                    balanceAdaptationFailed = it is CustomEndpointAdaptationException
+                    balanceEditorError = "登录失败：${it.message ?: "请重试"}"
                     message = balanceEditorError
                 }
             }

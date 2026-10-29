@@ -13,6 +13,9 @@ import java.net.HttpCookie
 import java.net.URL
 import java.net.URLEncoder
 import java.security.KeyStore
+import java.security.KeyFactory
+import java.security.spec.MGF1ParameterSpec
+import java.security.spec.X509EncodedKeySpec
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -21,6 +24,8 @@ import java.util.concurrent.Executors
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.spec.OAEPParameterSpec
+import javax.crypto.spec.PSource
 import javax.crypto.spec.GCMParameterSpec
 
 /** The health of one user-configured standard balance service. */
@@ -406,7 +411,7 @@ private object BalanceSecretBox {
     }
 }
 
-private class BalanceHttpException(
+internal class BalanceHttpException(
     val statusCode: Int,
     message: String,
     val payload: JSONObject? = null,
@@ -441,7 +446,6 @@ object StandardBalanceRepository {
     private const val MIN_REFRESH_MILLIS = 60_000L
     private const val KIMI_OAUTH_HOST = "https://auth.kimi.com"
     private const val KIMI_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"
-    private const val USERNAME_PASSWORD_CONTRACT = "username_password"
     private const val MAX_PARALLEL_REFRESHES = 8
     private val lock = Any()
     private val refreshExecutor = Executors.newFixedThreadPool(MAX_PARALLEL_REFRESHES)
@@ -817,82 +821,121 @@ object StandardBalanceRepository {
         // without asking the user to type them again.
         val withCredentials = service.copy(email = cleanEmail, password = passwordText)
         replace(context, withCredentials)
-        if (usesUsernameLoginContract(service.endpoint)) {
-            return loginUsernamePassword(context, service, cleanEmail, passwordText)
+        val selection = CustomEndpointCatalog.selection(service.endpoint, service.subjectId)
+        var lastFailure: Exception? = null
+        var authenticationFailure: Exception? = null
+        for (adapter in selection.adapters) {
+            try {
+                val data = loginCustomEndpoint(adapter, service.endpoint, cleanEmail, passwordText)
+                val access = data.optString("access_token")
+                check(access.isNotBlank()) { "登录响应中没有 access_token" }
+                val profile = customProfileData(
+                    requestJson(
+                        join(service.endpoint, adapter.profileSuffix),
+                        "GET",
+                        null,
+                        access,
+                    ),
+                )
+                val balance = readCustomEndpointBalance(adapter, service.endpoint, profile)
+                val refresh = data.optString("refresh_token")
+                val expiresIn = data.optLong("expires_in", 86_400L).coerceAtLeast(60L)
+                val now = System.currentTimeMillis()
+                val next = service.copy(
+                    email = cleanEmail,
+                    password = passwordText,
+                    accessToken = access,
+                    refreshToken = refresh,
+                    subjectId = adapter.contract.storageKey,
+                    expiresAtMillis = data.optLong("access_expires_at", 0L)
+                        .takeIf { it > 0 }
+                        ?.times(1_000L)
+                        ?: if (refresh.isBlank()) Long.MAX_VALUE else now + expiresIn * 1_000L,
+                    balance = balance.value,
+                    currency = balance.currency,
+                    updatedAt = clock(),
+                    lastAttemptAtMillis = now,
+                    status = "已连接",
+                    health = BalanceHealth.FRESH,
+                )
+                replace(context, next)
+                QuotaRefreshScheduler.schedule(context)
+                notifyChanged(context)
+                return next.public()
+            } catch (error: Exception) {
+                lastFailure = error
+                if (
+                    authenticationFailure == null &&
+                    isCustomEndpointAuthenticationFailure(error)
+                ) {
+                    authenticationFailure = error
+                }
+            }
         }
-        val data = try {
-            loginStandardEmailPassword(service, cleanEmail, passwordText)
-        } catch (error: BalanceHttpException) {
-            if (error.statusCode != 404) throw error
-            loginUsernamePassword(context, service, cleanEmail, passwordText).let { return it }
-        }
-        val access = data.optString("access_token")
-        check(access.isNotBlank()) { "登录响应中没有 access_token" }
-        val refresh = data.optString("refresh_token")
-        val expiresIn = data.optLong("expires_in", 86_400L).coerceAtLeast(60L)
-        val user = data.optJSONObject("user")
-        val balance = readBalance(data) ?: readBalance(user)
-        val now = System.currentTimeMillis()
-        val next = service.copy(
-            email = cleanEmail,
-            password = passwordText,
-            accessToken = access,
-            refreshToken = refresh,
-            expiresAtMillis = now + expiresIn * 1_000L,
-            balance = balance ?: service.balance,
-            updatedAt = clock(),
-            lastAttemptAtMillis = now,
-            status = "已连接",
-            health = BalanceHealth.FRESH,
+        authenticationFailure?.let { throw CustomEndpointAuthenticationException(it) }
+        throw CustomEndpointAdaptationException(
+            endpoint = service.endpoint,
+            attemptedContracts = selection.adapters.map { it.contract },
+            cause = lastFailure,
         )
-        replace(context, next)
-        QuotaRefreshScheduler.schedule(context)
-        notifyChanged(context)
-        return next.public()
     }
 
-    private fun loginStandardEmailPassword(
-        service: StoredBalanceService,
-        email: String,
+    private fun loginCustomEndpoint(
+        adapter: CustomEndpointAdapter,
+        endpoint: String,
+        account: String,
         password: String,
     ): JSONObject {
-        val body = JSONObject().put("email", email).put("password", password)
-        return unwrap(requestJson(join(service.endpoint, "/auth/login"), "POST", body, null))
+        val body = when (adapter.passwordMode) {
+            CustomEndpointPasswordMode.PLAIN_TEXT -> JSONObject()
+                .put(adapter.accountField, account)
+                .put("password", password)
+            CustomEndpointPasswordMode.NEW_API_COMPATIBLE -> newApiLoginBody(endpoint, account, password)
+        }
+        return customProfileData(
+            requestJson(join(endpoint, adapter.loginSuffix), "POST", body, null),
+        )
     }
 
-    private fun loginUsernamePassword(
-        context: Context,
-        service: StoredBalanceService,
-        username: String,
-        password: String,
-    ): BalanceService {
-        val body = JSONObject().put("username", username).put("password", password)
-        val data = unwrap(requestJson(join(service.endpoint, "/user/login"), "POST", body, null))
-        val access = data.optString("access_token")
-        check(access.isNotBlank()) { "登录响应中没有 access_token" }
-        val refresh = data.optString("refresh_token")
-        val expiresIn = data.optLong("expires_in", 86_400L).coerceAtLeast(60L)
-        val profile = fetchUsernameProfile(service.endpoint, access)
-        val balance = readBalance(profile) ?: readBalance(profile.optJSONObject("user"))
-        val now = System.currentTimeMillis()
-        val next = service.copy(
-            email = username,
-            password = password,
-            accessToken = access,
-            refreshToken = refresh,
-            subjectId = USERNAME_PASSWORD_CONTRACT,
-            expiresAtMillis = if (refresh.isBlank()) Long.MAX_VALUE else now + expiresIn * 1_000L,
-            balance = balance ?: service.balance,
-            currency = "USD",
-            updatedAt = clock(),
-            lastAttemptAtMillis = now,
-            status = "已连接",
-            health = BalanceHealth.FRESH,
+    private fun newApiLoginBody(endpoint: String, account: String, password: String): JSONObject {
+        val status = runCatching {
+            customProfileData(requestJson(join(endpoint, "/api/status"), "GET", null, null))
+        }.getOrNull()
+        val encryptionEnabled = status?.optBoolean("password_login_encryption_enabled", false) == true
+        val body = JSONObject().put("username", account)
+        if (!encryptionEnabled) return body.put("password", password)
+        val keyData = customProfileData(
+            requestJson(join(endpoint, "/api/user/login/encryption-key"), "GET", null, null),
         )
-        replace(context, next)
-        QuotaRefreshScheduler.schedule(context)
-        notifyChanged(context)
-        return next.public()
+        val keyId = keyData.optString("encryption_key_id").ifBlank {
+            keyData.optString("kid")
+        }
+        val publicKey = keyData.optString("public_key")
+        check(keyId.isNotBlank() && publicKey.isNotBlank()) { "New API 登录加密密钥不可用" }
+        return body
+            .put("password_encrypted", encryptNewApiPassword(password, publicKey))
+            .put("encryption_key_id", keyId)
+    }
+
+    private fun encryptNewApiPassword(password: String, publicKeyPem: String): String {
+        val encodedKey = publicKeyPem
+            .replace("-----BEGIN PUBLIC KEY-----", "")
+            .replace("-----END PUBLIC KEY-----", "")
+            .replace(Regex("\\s+"), "")
+        val key = KeyFactory.getInstance("RSA")
+            .generatePublic(X509EncodedKeySpec(Base64.decode(encodedKey, Base64.DEFAULT)))
+        val cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
+        cipher.init(
+            Cipher.ENCRYPT_MODE,
+            key,
+            OAEPParameterSpec(
+                "SHA-256",
+                "MGF1",
+                MGF1ParameterSpec.SHA256,
+                PSource.PSpecified.DEFAULT,
+            ),
+        )
+        return Base64.encodeToString(cipher.doFinal(password.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
     }
 
     private fun loginApiKey(
@@ -1186,15 +1229,23 @@ object StandardBalanceRepository {
         replace(context, initial.copy(lastAttemptAtMillis = now))
         return try {
             var current = requireStored(context, id)
-            if (current.refreshToken.isNotBlank() && current.expiresAtMillis in 1..(now + 60_000L)) {
-                current = refreshTokens(context, current)
+            val adapter = CustomEndpointCatalog.adapterForStoredService(
+                current.endpoint,
+                current.subjectId,
+            )
+            if (
+                adapter.refreshSuffix != null &&
+                current.refreshToken.isNotBlank() &&
+                current.expiresAtMillis in 1..(now + 60_000L)
+            ) {
+                current = refreshTokens(context, current, adapter)
             }
             var payload = try {
-                fetchEmailPasswordProfile(current)
+                fetchEmailPasswordProfile(current, adapter)
             } catch (error: BalanceHttpException) {
                 if (error.statusCode != 401) throw error
-                current = if (current.refreshToken.isNotBlank()) {
-                    runCatching { refreshTokens(context, current) }.getOrElse {
+                current = if (current.refreshToken.isNotBlank() && adapter.refreshSuffix != null) {
+                    runCatching { refreshTokens(context, current, adapter) }.getOrElse {
                         if (current.email.isNotBlank() && current.password.isNotBlank()) relogin(context, id, current) else throw it
                     }
                 } else if (current.email.isNotBlank() && current.password.isNotBlank()) {
@@ -1202,13 +1253,13 @@ object StandardBalanceRepository {
                 } else {
                     throw error
                 }
-                fetchEmailPasswordProfile(current)
+                fetchEmailPasswordProfile(current, adapter)
             }
-            val profile = unwrap(payload)
-            val balance = readBalance(profile) ?: readBalance(profile.optJSONObject("user"))
-                ?: error("余额响应中没有 balance")
+            val profile = customProfileData(payload)
+            val balance = readCustomEndpointBalance(adapter, current.endpoint, profile)
             val success = current.copy(
-                balance = formatBalance(balance),
+                balance = balance.value,
+                currency = balance.currency,
                 updatedAt = clock(),
                 status = "已连接",
                 health = BalanceHealth.FRESH,
@@ -1773,14 +1824,19 @@ object StandardBalanceRepository {
         }
     }
 
-    private fun refreshTokens(context: Context, service: StoredBalanceService): StoredBalanceService {
+    private fun refreshTokens(
+        context: Context,
+        service: StoredBalanceService,
+        adapter: CustomEndpointAdapter,
+    ): StoredBalanceService {
+        val refreshSuffix = adapter.refreshSuffix ?: return service
         val payload = requestJson(
-            join(service.endpoint, "/auth/refresh"),
+            join(service.endpoint, refreshSuffix),
             "POST",
             JSONObject().put("refresh_token", service.refreshToken),
             null,
         )
-        val data = unwrap(payload)
+        val data = customProfileData(payload)
         val access = data.optString("access_token")
         check(access.isNotBlank()) { "刷新响应中没有 access_token" }
         val refresh = data.optString("refresh_token").ifBlank { service.refreshToken }
@@ -2037,24 +2093,59 @@ object StandardBalanceRepository {
 
     private fun join(endpoint: String, path: String) = endpoint.trimEnd('/') + "/" + path.trimStart('/')
 
-    private fun fetchEmailPasswordProfile(service: StoredBalanceService): JSONObject =
-        if (service.subjectId == USERNAME_PASSWORD_CONTRACT || usesUsernameLoginContract(service.endpoint)) {
-            fetchUsernameProfile(service.endpoint, service.accessToken)
-        } else {
-            requestJson(join(service.endpoint, "/user/profile"), "GET", null, service.accessToken)
-        }
-
-    private fun fetchUsernameProfile(endpoint: String, accessToken: String): JSONObject = requestJson(
-        join(endpoint, "/user/me?include_statistics=false"),
+    private fun fetchEmailPasswordProfile(
+        service: StoredBalanceService,
+        adapter: CustomEndpointAdapter,
+    ): JSONObject = requestJson(
+        join(service.endpoint, adapter.profileSuffix),
         "GET",
         null,
-        accessToken,
+        service.accessToken,
     )
 
-    private fun usesUsernameLoginContract(endpoint: String): Boolean = runCatching {
-        URL(endpoint).host.equals("zhiyaoapi.top", ignoreCase = true) ||
-            URL(endpoint).host.endsWith(".zhiyaoapi.top", ignoreCase = true)
-    }.getOrDefault(false)
+    private fun customProfileData(payload: JSONObject): JSONObject {
+        val code = payload.opt("code")
+        val codeText = code?.toString()?.trim().orEmpty()
+        val succeeded = code == null ||
+            codeText == "0" ||
+            codeText == "200" ||
+            codeText == "20000" ||
+            codeText.equals("success", ignoreCase = true)
+        val success = !payload.has("success") || payload.optBoolean("success", true)
+        if (!succeeded || !success) {
+            val message = payload.optString("message", payload.optString("msg", "请求失败"))
+            val authenticationCode = codeText.toIntOrNull()?.takeIf { it in setOf(401, 403) }
+            if (
+                authenticationCode != null ||
+                customEndpointMessageIndicatesAuthentication(message)
+            ) {
+                throw BalanceHttpException(authenticationCode ?: 401, message, payload)
+            }
+            error(message)
+        }
+        return payload.optJSONObject("data") ?: payload
+    }
+
+    private fun readCustomEndpointBalance(
+        adapter: CustomEndpointAdapter,
+        endpoint: String,
+        profile: JSONObject,
+    ): CustomEndpointBalance = when (adapter.balanceMode) {
+        CustomEndpointBalanceMode.GENERIC_BALANCE_FIELD -> {
+            val value = readBalance(profile) ?: readBalance(profile.optJSONObject("user"))
+                ?: error("余额响应中没有 balance 或 fixed_balance")
+            CustomEndpointBalance(formatBalance(value), "USD")
+        }
+        CustomEndpointBalanceMode.NEW_API_QUOTA -> {
+            val quota = amountDecimal(profile.opt("quota"))
+                ?: amountDecimal(profile.optJSONObject("user")?.opt("quota"))
+                ?: error("New API 余额响应中没有 quota")
+            val status = customProfileData(
+                requestJson(join(endpoint, "/api/status"), "GET", null, null),
+            )
+            parseNewApiQuotaDisplay(quota, status)
+        }
+    }
 
     /**
      * Keep SiliconFlow's official endpoint compatible with CC Switch:
