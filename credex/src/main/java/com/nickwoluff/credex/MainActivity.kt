@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.graphics.BitmapFactory
+import android.icu.text.Transliterator
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -268,7 +269,19 @@ private val ADD_BRAND_ENTRIES = listOf(
     AddBrandEntry(AddBrand.VOLCENGINE, PlatformBrand.VOLCENGINE, "账户余额 | Coding Plan | Agent Plan"),
     AddBrandEntry(AddBrand.MIMO, PlatformBrand.XIAOMI_MIMO, "账户余额 | Token Plan"),
     AddBrandEntry(AddBrand.STANDARD, PlatformBrand.CUSTOM_ENDPOINT, "账户余额"),
+).sortedWith(
+    compareBy<AddBrandEntry> { it.platform == PlatformBrand.CUSTOM_ENDPOINT }
+        .thenBy { platformDisplaySortKey(it.platform.displayName) }
+        .thenBy { it.platform.displayName },
 )
+
+private fun platformDisplaySortKey(displayName: String): String = runCatching {
+    Transliterator
+        .getInstance("Han-Latin; Latin-ASCII")
+        .transliterate(displayName)
+        .lowercase()
+        .trim()
+}.getOrDefault(displayName.lowercase())
 
 private enum class ActivityPage(val value: String) {
     ROOT("root"),
