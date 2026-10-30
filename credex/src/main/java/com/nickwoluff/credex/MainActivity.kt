@@ -29,14 +29,19 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -206,6 +211,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.anim.SinOutEasing
 import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBar as MiuixFloatingNavigationBar
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem as MiuixFloatingNavigationBarItem
@@ -3386,8 +3392,6 @@ open class MainActivity : ComponentActivity() {
     private fun BalanceServiceEditorDialog() {
         val uriHandler = LocalUriHandler.current
         val isCustomEndpointEditor = balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD
-        val showEndpointPage = !isCustomEndpointEditor || balanceEditorPage == 0
-        val showLoginPage = !isCustomEndpointEditor || balanceEditorPage == 1
         StyleAlertDialog(
             title = if (editingBalanceServiceId == null) "添加服务" else "编辑服务",
             summary = "配置服务连接和认证方式。凭据仅保存在本机加密存储中。",
@@ -3400,8 +3404,45 @@ open class MainActivity : ComponentActivity() {
                 }
             },
             body = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (showEndpointPage) {
+                AnimatedContent(
+                    targetState = if (isCustomEndpointEditor) balanceEditorPage else 0,
+                    modifier = Modifier.fillMaxWidth(),
+                    transitionSpec = {
+                        val direction = if (targetState >= initialState) 1 else -1
+                        val pageSpring = spring<androidx.compose.ui.unit.IntOffset>(
+                            dampingRatio = 0.88f,
+                            stiffness = 450f,
+                        )
+                        val enterTransition =
+                            slideInHorizontally(
+                                animationSpec = pageSpring,
+                                initialOffsetX = { width -> direction * width / 3 },
+                            ) + fadeIn(
+                                animationSpec = tween(
+                                    durationMillis = 180,
+                                    easing = SinOutEasing,
+                                ),
+                            )
+                        val exitTransition =
+                            slideOutHorizontally(
+                                animationSpec = pageSpring,
+                                targetOffsetX = { width -> -direction * width / 4 },
+                            ) + fadeOut(
+                                animationSpec = tween(
+                                    durationMillis = 120,
+                                    easing = SinOutEasing,
+                                ),
+                            )
+                        (enterTransition togetherWith exitTransition)
+                            .using(SizeTransform(clip = false))
+                    },
+                    contentAlignment = Alignment.TopStart,
+                    label = "custom-endpoint-editor-page",
+                ) { page ->
+                    val showEndpointPage = !isCustomEndpointEditor || page == 0
+                    val showLoginPage = !isCustomEndpointEditor || page == 1
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (showEndpointPage) {
                         AppTextField(
                             value = balanceNameInput,
                             onValueChange = { balanceNameInput = it; balanceEditorError = "" },
@@ -3449,7 +3490,7 @@ open class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-                    if (showLoginPage) {
+                        if (showLoginPage) {
                         if (isCustomEndpointEditor) {
                             Text(
                                 "登录",
@@ -3588,6 +3629,7 @@ open class MainActivity : ComponentActivity() {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        }
                     }
                 }
             },
