@@ -2732,7 +2732,7 @@ open class MainActivity : ComponentActivity() {
                 SettingsDivider()
                 SettingsSwitchRow(
                     title = "自动检查更新",
-                    subtitle = if (autoUpdateCheck) "打开应用时自动检查 GitHub Release" else "仅在此页面手动检查",
+                    subtitle = if (autoUpdateCheck) "打开应用时自动检查更新" else "仅手动检查",
                     checked = autoUpdateCheck,
                     leadingIcon = Icons.Filled.Autorenew,
                     onCheckedChange = { enabled ->

@@ -829,15 +829,12 @@ object StandardBalanceRepository {
                 val data = loginCustomEndpoint(adapter, service.endpoint, cleanEmail, passwordText)
                 val access = data.optString("access_token")
                 check(access.isNotBlank()) { "登录响应中没有 access_token" }
-                val profile = customProfileData(
-                    requestJson(
-                        join(service.endpoint, adapter.profileSuffix),
-                        "GET",
-                        null,
-                        access,
-                    ),
-                )
-                val balance = readCustomEndpointBalance(adapter, service.endpoint, profile)
+                val balance = readCustomEndpointBalanceOrNull(adapter, service.endpoint, data)
+                    ?: fetchCustomEndpointBalanceFromProfile(
+                        adapter = adapter,
+                        endpoint = service.endpoint,
+                        accessToken = access,
+                    )
                 val refresh = data.optString("refresh_token")
                 val expiresIn = data.optLong("expires_in", 86_400L).coerceAtLeast(60L)
                 val now = System.currentTimeMillis()
@@ -1240,8 +1237,12 @@ object StandardBalanceRepository {
             ) {
                 current = refreshTokens(context, current, adapter)
             }
-            var payload = try {
-                fetchEmailPasswordProfile(current, adapter)
+            val balance = try {
+                fetchCustomEndpointBalanceFromProfile(
+                    adapter = adapter,
+                    endpoint = current.endpoint,
+                    accessToken = current.accessToken,
+                )
             } catch (error: BalanceHttpException) {
                 if (error.statusCode != 401) throw error
                 current = if (current.refreshToken.isNotBlank() && adapter.refreshSuffix != null) {
@@ -1253,10 +1254,12 @@ object StandardBalanceRepository {
                 } else {
                     throw error
                 }
-                fetchEmailPasswordProfile(current, adapter)
+                fetchCustomEndpointBalanceFromProfile(
+                    adapter = adapter,
+                    endpoint = current.endpoint,
+                    accessToken = current.accessToken,
+                )
             }
-            val profile = customProfileData(payload)
-            val balance = readCustomEndpointBalance(adapter, current.endpoint, profile)
             val success = current.copy(
                 balance = balance.value,
                 currency = balance.currency,
@@ -2052,22 +2055,6 @@ object StandardBalanceRepository {
         else -> null
     }
 
-    private fun readBalance(json: JSONObject?): String? {
-        if (json == null) return null
-        val value = when {
-            json.has("balance") && !json.isNull("balance") -> json.opt("balance")
-            json.has("available_balance") && !json.isNull("available_balance") -> json.opt("available_balance")
-            json.has("fixed_balance") && !json.isNull("fixed_balance") -> json.opt("fixed_balance")
-            json.has("fixedBalance") && !json.isNull("fixedBalance") -> json.opt("fixedBalance")
-            else -> null
-        } ?: return null
-        return when (value) {
-            is Number -> formatBalance(value.toString())
-            is String -> value.trim().takeIf { it.isNotBlank() }
-            else -> null
-        }
-    }
-
     private fun formatBalance(value: String): String = runCatching {
         java.math.BigDecimal(value).stripTrailingZeros().toPlainString()
     }.getOrDefault(value)
@@ -2093,15 +2080,33 @@ object StandardBalanceRepository {
 
     private fun join(endpoint: String, path: String) = endpoint.trimEnd('/') + "/" + path.trimStart('/')
 
-    private fun fetchEmailPasswordProfile(
-        service: StoredBalanceService,
+    private fun fetchCustomEndpointBalanceFromProfile(
         adapter: CustomEndpointAdapter,
-    ): JSONObject = requestJson(
-        join(service.endpoint, adapter.profileSuffix),
-        "GET",
-        null,
-        service.accessToken,
-    )
+        endpoint: String,
+        accessToken: String,
+    ): CustomEndpointBalance {
+        var lastFailure: Exception? = null
+        for (suffix in adapter.profileSuffixes) {
+            try {
+                val profile = customProfileData(
+                    requestJson(
+                        join(endpoint, suffix),
+                        "GET",
+                        null,
+                        accessToken,
+                    ),
+                )
+                readCustomEndpointBalanceOrNull(adapter, endpoint, profile)?.let { return it }
+                lastFailure = IllegalArgumentException("用户信息响应中没有可解析的余额")
+            } catch (error: BalanceHttpException) {
+                lastFailure = error
+                if (error.statusCode !in setOf(404, 405)) throw error
+            } catch (error: Exception) {
+                throw error
+            }
+        }
+        throw lastFailure ?: IllegalArgumentException("无法读取自定义接口余额")
+    }
 
     private fun customProfileData(payload: JSONObject): JSONObject {
         val code = payload.opt("code")
@@ -2126,20 +2131,19 @@ object StandardBalanceRepository {
         return payload.optJSONObject("data") ?: payload
     }
 
-    private fun readCustomEndpointBalance(
+    private fun readCustomEndpointBalanceOrNull(
         adapter: CustomEndpointAdapter,
         endpoint: String,
         profile: JSONObject,
-    ): CustomEndpointBalance = when (adapter.balanceMode) {
+    ): CustomEndpointBalance? = when (adapter.balanceMode) {
         CustomEndpointBalanceMode.GENERIC_BALANCE_FIELD -> {
-            val value = readBalance(profile) ?: readBalance(profile.optJSONObject("user"))
-                ?: error("余额响应中没有 balance 或 fixed_balance")
+            val value = readGenericCustomEndpointBalance(profile) ?: return null
             CustomEndpointBalance(formatBalance(value), "USD")
         }
         CustomEndpointBalanceMode.NEW_API_QUOTA -> {
             val quota = amountDecimal(profile.opt("quota"))
                 ?: amountDecimal(profile.optJSONObject("user")?.opt("quota"))
-                ?: error("New API 余额响应中没有 quota")
+                ?: return null
             val status = customProfileData(
                 requestJson(join(endpoint, "/api/status"), "GET", null, null),
             )

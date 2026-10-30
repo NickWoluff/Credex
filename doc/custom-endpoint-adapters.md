@@ -8,7 +8,7 @@ Credex 的“自定义接口”按请求路径格式分类适配。填写根地�
 
 | API 根地址 | 接口分类 | 登录请求 | 余额请求 |
 | --- | --- | --- | --- |
-| `https://ai.091233.xyz/api/v1` | 标准邮箱密码接口 | `POST /auth/login` | `GET /user/profile` |
+| `https://ai.091233.xyz/api/v1` | 标准邮箱密码接口 | `POST /auth/login` | `GET /auth/me`，兼容 `GET /user/profile` |
 | `https://zhiyaoapi.top` | 用户名密码接口 | `POST /user/login` | `GET /user/me?include_statistics=false` |
 | `https://yujianwudi.top` | New API 接口 | `POST /api/user/login` | `GET /api/user/self` |
 
@@ -18,7 +18,7 @@ Credex 的“自定义接口”按请求路径格式分类适配。填写根地�
 
 未登记在清单中的 HTTPS 根地址会依次尝试：
 
-1. 标准邮箱密码接口：`/auth/login`、`/auth/refresh`、`/user/profile`
+1. 标准邮箱密码接口：`/auth/login`、`/auth/refresh`、`/auth/me`，并兼容 `/user/profile`
 2. 用户名密码接口：`/user/login`、`/user/me?include_statistics=false`
 3. New API 接口：`/api/user/login`、`/api/user/self`、`/api/status`；站点启用密码加密时会读取 `/api/user/login/encryption-key` 并使用 RSA-OAEP（SHA-256）加密密码
 

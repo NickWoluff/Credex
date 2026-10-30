@@ -43,10 +43,14 @@ internal data class CustomEndpointAdapter(
     val loginSuffix: String,
     val refreshSuffix: String?,
     val profileSuffix: String,
+    val fallbackProfileSuffixes: List<String> = emptyList(),
     val accountField: String,
     val passwordMode: CustomEndpointPasswordMode,
     val balanceMode: CustomEndpointBalanceMode,
-)
+) {
+    val profileSuffixes: List<String>
+        get() = listOf(profileSuffix) + fallbackProfileSuffixes
+}
 
 internal data class CustomEndpointBalance(
     val value: String,
@@ -92,6 +96,7 @@ internal fun customEndpointMessageIndicatesAuthentication(message: String): Bool
     val normalized = message.trim().lowercase()
     if (normalized.isBlank()) return false
     return listOf(
+        "invalid email or password",
         "incorrect username or password",
         "invalid username or password",
         "invalid credentials",
@@ -121,7 +126,8 @@ internal object CustomEndpointCatalog {
         contract = CustomEndpointContract.STANDARD_EMAIL_PASSWORD,
         loginSuffix = "/auth/login",
         refreshSuffix = "/auth/refresh",
-        profileSuffix = "/user/profile",
+        profileSuffix = "/auth/me",
+        fallbackProfileSuffixes = listOf("/user/profile"),
         accountField = "email",
         passwordMode = CustomEndpointPasswordMode.PLAIN_TEXT,
         balanceMode = CustomEndpointBalanceMode.GENERIC_BALANCE_FIELD,
@@ -265,4 +271,35 @@ internal fun parseNewApiQuotaDisplay(
         else -> "USD"
     }
     return CustomEndpointBalance(value.stripTrailingZeros().toPlainString(), currency)
+}
+
+/**
+ * 标准接口的登录响应通常在 user 内直接携带余额；详情接口缺失时仍应能完成登录。
+ */
+internal fun readGenericCustomEndpointBalance(payload: JSONObject): String? {
+    val data = payload.optJSONObject("data")
+    val candidates = listOf(
+        payload,
+        data,
+        payload.optJSONObject("user"),
+        data?.optJSONObject("user"),
+    )
+    for (candidate in candidates.filterNotNull()) {
+        val value = when {
+            candidate.has("balance") && !candidate.isNull("balance") -> candidate.opt("balance")
+            candidate.has("available_balance") && !candidate.isNull("available_balance") ->
+                candidate.opt("available_balance")
+            candidate.has("fixed_balance") && !candidate.isNull("fixed_balance") ->
+                candidate.opt("fixed_balance")
+            candidate.has("fixedBalance") && !candidate.isNull("fixedBalance") ->
+                candidate.opt("fixedBalance")
+            else -> null
+        }
+        return when (value) {
+            is Number -> value.toString()
+            is String -> value.trim().takeIf(String::isNotBlank)
+            else -> null
+        } ?: continue
+    }
+    return null
 }

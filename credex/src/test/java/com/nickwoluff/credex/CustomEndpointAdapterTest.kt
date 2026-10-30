@@ -19,6 +19,10 @@ class CustomEndpointAdapterTest {
             selection.adapters.map { it.contract },
         )
         assertEquals("/auth/login", selection.adapters.single().loginSuffix)
+        assertEquals(
+            listOf("/auth/me", "/user/profile"),
+            selection.adapters.single().profileSuffixes,
+        )
     }
 
     @Test
@@ -154,6 +158,24 @@ class CustomEndpointAdapterTest {
         assertFalse(
             isCustomEndpointAuthenticationFailure(
                 IllegalStateException("Invalid parameters"),
+            ),
+        )
+    }
+
+    @Test
+    fun standardLoginResponseCanSupplyBalanceWithoutProfileRequest() {
+        val loginPayload = JSONObject(
+            """{"access_token":"token","user":{"id":1,"balance":"12.50"}}""",
+        )
+
+        assertEquals("12.50", readGenericCustomEndpointBalance(loginPayload))
+    }
+
+    @Test
+    fun emailPasswordRejectionIsAnAuthenticationFailure() {
+        assertTrue(
+            isCustomEndpointAuthenticationFailure(
+                IllegalStateException("invalid email or password"),
             ),
         )
     }
