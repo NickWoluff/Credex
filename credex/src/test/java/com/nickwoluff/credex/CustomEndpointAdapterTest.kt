@@ -179,4 +179,32 @@ class CustomEndpointAdapterTest {
             ),
         )
     }
+
+    @Test
+    fun customEndpointFirstPageRequiresNameAndHttpsRoot() {
+        assertEquals(
+            "请输入服务名称",
+            customEndpointEndpointPageError("", "https://example.com"),
+        )
+        assertEquals(
+            "请输入 API 根地址",
+            customEndpointEndpointPageError("测试", ""),
+        )
+        assertEquals(
+            "API 根地址必须使用 HTTPS",
+            customEndpointEndpointPageError("测试", "http://example.com"),
+        )
+        assertEquals(
+            "请输入有效的 API 根地址",
+            customEndpointEndpointPageError("测试", "https://"),
+        )
+    }
+
+    @Test
+    fun customEndpointFirstPageAcceptsValidRoot() {
+        assertEquals(
+            null,
+            customEndpointEndpointPageError("测试", "https://example.com/api/v1"),
+        )
+    }
 }

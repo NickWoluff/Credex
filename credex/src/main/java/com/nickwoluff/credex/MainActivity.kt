@@ -440,6 +440,7 @@ open class MainActivity : ComponentActivity() {
     private var balanceIncludeGranted by mutableStateOf(true)
     private var balanceEditorError by mutableStateOf("")
     private var balanceAdaptationFailed by mutableStateOf(false)
+    private var balanceEditorPage by mutableStateOf(0)
     private var balanceEditorBusy by mutableStateOf(false)
     private var deletingBalanceServiceId by mutableStateOf<String?>(null)
     private var pendingSiliconFlowLoginServiceId: String? = null
@@ -1416,6 +1417,7 @@ open class MainActivity : ComponentActivity() {
         body: @Composable () -> Unit,
         confirmButton: @Composable () -> Unit = {},
         dismissButton: @Composable () -> Unit = {},
+        customActions: (@Composable () -> Unit)? = null,
         singleAction: Boolean = false,
     ) {
         if (uiStyle == UiStyle.MIUIX) {
@@ -1438,7 +1440,9 @@ open class MainActivity : ComponentActivity() {
                         // 先为底部操作区保留完整高度；长内容在剩余区域内滚动，避免按钮被
                         // WindowDialog 的最大高度压缩到只剩背景而没有文字。
                         Box(Modifier.weight(1f, fill = false)) { body() }
-                        if (singleAction) {
+                        if (customActions != null) {
+                            customActions()
+                        } else if (singleAction) {
                             Box(Modifier.fillMaxWidth()) { confirmButton() }
                         } else {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1454,8 +1458,8 @@ open class MainActivity : ComponentActivity() {
                 onDismissRequest = onDismissRequest,
                 title = { Text(title) },
                 text = body,
-                confirmButton = confirmButton,
-                dismissButton = dismissButton,
+                confirmButton = { if (customActions != null) customActions() else confirmButton() },
+                dismissButton = { if (customActions == null) dismissButton() },
             )
         }
     }
@@ -3381,202 +3385,274 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun BalanceServiceEditorDialog() {
         val uriHandler = LocalUriHandler.current
+        val isCustomEndpointEditor = balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD
+        val showEndpointPage = !isCustomEndpointEditor || balanceEditorPage == 0
+        val showLoginPage = !isCustomEndpointEditor || balanceEditorPage == 1
         StyleAlertDialog(
             title = if (editingBalanceServiceId == null) "添加服务" else "编辑服务",
             summary = "配置服务连接和认证方式。凭据仅保存在本机加密存储中。",
-            onDismissRequest = { if (!balanceEditorBusy) closeBalanceEditor() },
+            onDismissRequest = {
+                if (balanceEditorBusy) return@StyleAlertDialog
+                if (isCustomEndpointEditor && balanceEditorPage == 1) {
+                    previousBalanceEditorPage()
+                } else {
+                    closeBalanceEditor()
+                }
+            },
             body = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AppTextField(
-                        value = balanceNameInput,
-                        onValueChange = { balanceNameInput = it; balanceEditorError = "" },
-                        label = "名称",
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) {
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    if (showEndpointPage) {
+                        AppTextField(
+                            value = balanceNameInput,
+                            onValueChange = { balanceNameInput = it; balanceEditorError = "" },
+                            label = "名称",
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (isCustomEndpointEditor) {
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(
+                                    "API 根地址",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    "这里填写服务根地址，不要填写登录或余额接口。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    "查看已适配的 API 根地址",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable {
+                                        uriHandler.openUri(CustomEndpointCatalog.DOCUMENTATION_URL)
+                                    },
+                                )
+                            }
+                        }
+                        AppTextField(
+                            value = balanceEndpointInput,
+                            onValueChange = {
+                                balanceEndpointInput = it
+                                balanceEditorError = ""
+                                balanceAdaptationFailed = false
+                            },
+                            label = "API 根地址",
+                            placeholder = "https://example.com/api/v1",
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (isCustomEndpointEditor && balanceEditorError.isNotBlank()) {
                             Text(
-                                "API 根地址",
-                                style = MaterialTheme.typography.labelLarge,
+                                balanceEditorError,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                    if (showLoginPage) {
+                        if (isCustomEndpointEditor) {
+                            Text(
+                                "登录",
+                                style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
-                            Text(
-                                "这里填写服务根地址，不要填写登录或余额接口。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                "查看已适配的 API 根地址",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.clickable {
-                                    uriHandler.openUri(CustomEndpointCatalog.DOCUMENTATION_URL)
-                                },
-                            )
                         }
-                    }
-                    AppTextField(
-                        value = balanceEndpointInput,
-                        onValueChange = {
-                            balanceEndpointInput = it
-                            balanceEditorError = ""
-                            balanceAdaptationFailed = false
-                        },
-                        label = "API 根地址",
-                        placeholder = "https://example.com/api/v1",
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    when {
-                        balanceAuthMode.usesBrowserLogin() -> {
-                            Text("登录方式：内置浏览器", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-                            Text(
-                                when (platformBrand(balanceAuthMode)) {
-                                    PlatformBrand.SILICON_FLOW -> "保存后会打开 SiliconFlow 控制台。请在页面内完成登录，应用会自动读取登录状态并返回。"
-                                    PlatformBrand.XIAOMI_MIMO -> "保存后会打开 Xiaomi MIMO 控制台。应用只读取余额接口所需的会话状态，不使用 Token Plan 专属 API Key。"
-                                    else -> "保存后会打开平台官网控制台。应用只保存后台刷新所需的加密会话，不记录账号资料或网页内容。"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD -> {
-                            Text("登录方式：邮箱 / 用户名 + 密码", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-                        }
-                        balanceAuthMode == BalanceAuthMode.API_KEY -> {
-                            Text("登录方式：API Key", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-                            Text(
-                                "凭据会使用 Android Keystore 加密保存，并通过官方接口读取余额。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        balanceAuthMode == BalanceAuthMode.KIMI -> {
-                            Text("登录方式：Kimi 官方授权", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-                            Text(
-                                "保存后会打开 Kimi 官方设备授权页；访问令牌和刷新令牌只会使用 Android Keystore 加密保存在本机。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        balanceAuthMode.usesApiToken() -> {
-                            Text("登录方式：API Key", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-                            Text(
-                                "凭据只会使用 Android Keystore 加密保存，并通过平台官网接口读取余额或配额。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) {
-                        AppTextField(
-                            value = balanceEmailInput,
-                            onValueChange = { balanceEmailInput = it; balanceEditorError = "" },
-                            label = "邮箱 / 用户名",
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    if (!balanceAuthMode.usesBrowserLogin() && balanceAuthMode != BalanceAuthMode.KIMI) {
-                        AppTextField(
-                            value = balancePasswordInput,
-                            onValueChange = { balancePasswordInput = it; balanceEditorError = "" },
-                            label = if (balanceAuthMode.usesApiToken()) "API Key / 访问令牌" else "密码",
-                            placeholder = if (editingBalanceServiceId != null) {
-                                if (balanceAuthMode.usesApiToken()) "已加密保存；可直接修改" else "已保存密码；可直接修改"
-                            } else null,
-                            visualTransformation = if (balancePasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            trailingIcon = {
-                                if (uiStyle == UiStyle.MIUIX) {
-                                    MiuixIconButton(onClick = { balancePasswordVisible = !balancePasswordVisible }) {
-                                        Icon(
-                                            if (balancePasswordVisible) MiuixIcons.Regular.Hide else MiuixIcons.Regular.Show,
-                                            contentDescription = if (balancePasswordVisible) "隐藏凭据" else "显示凭据",
-                                        )
-                                    }
-                                } else {
-                                    IconButton(onClick = { balancePasswordVisible = !balancePasswordVisible }) {
-                                        Icon(
-                                            painterResource(if (balancePasswordVisible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
-                                            contentDescription = if (balancePasswordVisible) "隐藏凭据" else "显示凭据",
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) {
-                        EditorSwitchRow(
-                            title = "把代金券计入余额",
-                            subtitle = if (balanceIncludeVouchers) "会把可用代金券剩余额度一并累加" else "只显示控制台余额",
-                            checked = balanceIncludeVouchers,
-                            onCheckedChange = { balanceIncludeVouchers = it; balanceEditorError = "" },
-                        )
-                    }
-                    if (balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) {
-                        EditorSwitchRow(
-                            title = "把赠送余额计入显示",
-                            subtitle = if (balanceIncludeGranted) "显示总余额（包含赠送余额）" else "只显示充值余额",
-                            checked = balanceIncludeGranted,
-                            onCheckedChange = { balanceIncludeGranted = it; balanceEditorError = "" },
-                        )
-                    }
-                    if (balanceEditorError.isNotBlank()) {
-                        Text(
-                            balanceEditorError,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    if (balanceAdaptationFailed) {
-                        AppTextButton(
-                            text = "前往 GitHub 发布适配 Issue",
-                            onClick = {
-                                uriHandler.openUri(CustomEndpointCatalog.issueUrl(balanceEndpointInput))
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    Text(
-                        when (balanceAuthMode) {
-                            BalanceAuthMode.API_KEY -> "API Key 模式读取 API 余额 data.totalBalance。Endpoint 建议填写完整的 https://api.siliconflow.cn/v1；API Key 会使用 Android Keystore 加密保存。"
-                            BalanceAuthMode.DEEPSEEK_API_KEY -> "DeepSeek 使用 GET /user/balance 读取账户余额；API Key 会使用 Android Keystore 加密保存。"
-                            BalanceAuthMode.SILICONFLOW_CONSOLE -> "控制台模式由内置浏览器完成登录，自动读取 /walletd-server 的网页余额；打开上面的开关后，还会读取 stage=3 代金券并按剩余额度累加。"
-                            BalanceAuthMode.MIMO_BALANCE -> "Xiaomi MIMO 按量模式读取 /api/v1/balance，按人民币显示现金余额，并在详情中保留赠送余额。余额存在约 5 分钟延迟。"
-                            BalanceAuthMode.MIMO_TOKEN_PLAN -> "Xiaomi MIMO Token Plan 读取 /api/v1/tokenPlan/detail 与 /api/v1/tokenPlan/usage，主值显示剩余百分比，详情显示 Credits 和有效期。"
-                            BalanceAuthMode.VOLCENGINE_BALANCE -> "通过火山引擎控制台会话读取账户可用余额。"
-                            BalanceAuthMode.VOLCENGINE_CODING_PLAN -> "读取火山引擎 Coding Plan 的会话、周和月用量窗口。"
-                            BalanceAuthMode.VOLCENGINE_AGENT_PLAN -> "读取火山引擎 Agent Plan 的 5 小时、周和月用量窗口。"
-                            BalanceAuthMode.OPENCODE_ZEN -> "通过 OpenCode 控制台会话读取 Zen 当前账户余额。"
-                            BalanceAuthMode.OPENCODE_GO -> "使用 OpenCode API Key 读取 /zen/go/v1/usage 的 5 小时、周和月配额。"
-                            BalanceAuthMode.KIMI -> "通过 Kimi 官方设备授权登录，读取 /usages 的 5 小时与周配额，并自动刷新访问令牌。"
-                            BalanceAuthMode.KIMI_BALANCE -> "Kimi 使用 GET /v1/users/me/balance 读取账户余额；API Key 会使用 Android Keystore 加密保存。"
-                            BalanceAuthMode.GLM_BALANCE -> "通过智谱开放平台控制台会话读取账户余额。"
-                            BalanceAuthMode.GLM_CODING_PLAN -> "读取 GLM Coding Plan 的 5 小时与周配额。"
-                            BalanceAuthMode.EMAIL_PASSWORD -> "已知根地址会使用其固定接口分类；其它根地址会依次尝试标准邮箱密码接口、用户名密码接口和 New API 接口。只有登录成功且余额可解析时才会保存连接结果。账号和密码会使用 Android Keystore 加密保存。"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            confirmButton = {
-                AppButton(
-                    onClick = ::saveBalanceService,
-                    enabled = !balanceEditorBusy && balanceNameInput.isNotBlank() && balanceEndpointInput.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
                         when {
-                            balanceEditorBusy -> "连接中…"
-                            balanceAuthMode.usesBrowserLogin() -> "保存并登录"
-                            else -> "保存"
-                        },
-                        color = Color.White,
-                    )
+                            balanceAuthMode.usesBrowserLogin() -> {
+                                Text("登录方式：内置浏览器", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                                Text(
+                                    when (platformBrand(balanceAuthMode)) {
+                                        PlatformBrand.SILICON_FLOW -> "保存后会打开 SiliconFlow 控制台。请在页面内完成登录，应用会自动读取登录状态并返回。"
+                                        PlatformBrand.XIAOMI_MIMO -> "保存后会打开 Xiaomi MIMO 控制台。应用只读取余额接口所需的会话状态，不使用 Token Plan 专属 API Key。"
+                                        else -> "保存后会打开平台官网控制台。应用只保存后台刷新所需的加密会话，不记录账号资料或网页内容。"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD -> {
+                                Text("登录方式：邮箱 / 用户名 + 密码", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                            balanceAuthMode == BalanceAuthMode.API_KEY -> {
+                                Text("登录方式：API Key", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                                Text(
+                                    "凭据会使用 Android Keystore 加密保存，并通过官方接口读取余额。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            balanceAuthMode == BalanceAuthMode.KIMI -> {
+                                Text("登录方式：Kimi 官方授权", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                                Text(
+                                    "保存后会打开 Kimi 官方设备授权页；访问令牌和刷新令牌只会使用 Android Keystore 加密保存在本机。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            balanceAuthMode.usesApiToken() -> {
+                                Text("登录方式：API Key", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                                Text(
+                                    "凭据只会使用 Android Keystore 加密保存，并通过平台官网接口读取余额或配额。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (balanceAuthMode == BalanceAuthMode.EMAIL_PASSWORD) {
+                            AppTextField(
+                                value = balanceEmailInput,
+                                onValueChange = { balanceEmailInput = it; balanceEditorError = "" },
+                                label = "邮箱 / 用户名",
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        if (!balanceAuthMode.usesBrowserLogin() && balanceAuthMode != BalanceAuthMode.KIMI) {
+                            AppTextField(
+                                value = balancePasswordInput,
+                                onValueChange = { balancePasswordInput = it; balanceEditorError = "" },
+                                label = if (balanceAuthMode.usesApiToken()) "API Key / 访问令牌" else "密码",
+                                placeholder = if (editingBalanceServiceId != null) {
+                                    if (balanceAuthMode.usesApiToken()) "已加密保存；可直接修改" else "已保存密码；可直接修改"
+                                } else null,
+                                visualTransformation = if (balancePasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    if (uiStyle == UiStyle.MIUIX) {
+                                        MiuixIconButton(onClick = { balancePasswordVisible = !balancePasswordVisible }) {
+                                            Icon(
+                                                if (balancePasswordVisible) MiuixIcons.Regular.Hide else MiuixIcons.Regular.Show,
+                                                contentDescription = if (balancePasswordVisible) "隐藏凭据" else "显示凭据",
+                                            )
+                                        }
+                                    } else {
+                                        IconButton(onClick = { balancePasswordVisible = !balancePasswordVisible }) {
+                                            Icon(
+                                                painterResource(if (balancePasswordVisible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
+                                                contentDescription = if (balancePasswordVisible) "隐藏凭据" else "显示凭据",
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) {
+                            EditorSwitchRow(
+                                title = "把代金券计入余额",
+                                subtitle = if (balanceIncludeVouchers) "会把可用代金券剩余额度一并累加" else "只显示控制台余额",
+                                checked = balanceIncludeVouchers,
+                                onCheckedChange = { balanceIncludeVouchers = it; balanceEditorError = "" },
+                            )
+                        }
+                        if (balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) {
+                            EditorSwitchRow(
+                                title = "把赠送余额计入显示",
+                                subtitle = if (balanceIncludeGranted) "显示总余额（包含赠送余额）" else "只显示充值余额",
+                                checked = balanceIncludeGranted,
+                                onCheckedChange = { balanceIncludeGranted = it; balanceEditorError = "" },
+                            )
+                        }
+                        if (balanceEditorError.isNotBlank()) {
+                            Text(
+                                balanceEditorError,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        if (balanceAdaptationFailed) {
+                            AppTextButton(
+                                text = "前往 GitHub 发布适配 Issue",
+                                onClick = {
+                                    uriHandler.openUri(CustomEndpointCatalog.issueUrl(balanceEndpointInput))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Text(
+                            when (balanceAuthMode) {
+                                BalanceAuthMode.API_KEY -> "API Key 模式读取 API 余额 data.totalBalance。Endpoint 建议填写完整的 https://api.siliconflow.cn/v1；API Key 会使用 Android Keystore 加密保存。"
+                                BalanceAuthMode.DEEPSEEK_API_KEY -> "DeepSeek 使用 GET /user/balance 读取账户余额；API Key 会使用 Android Keystore 加密保存。"
+                                BalanceAuthMode.SILICONFLOW_CONSOLE -> "控制台模式由内置浏览器完成登录，自动读取 /walletd-server 的网页余额；打开上面的开关后，还会读取 stage=3 代金券并按剩余额度累加。"
+                                BalanceAuthMode.MIMO_BALANCE -> "Xiaomi MIMO 按量模式读取 /api/v1/balance，按人民币显示现金余额，并在详情中保留赠送余额。余额存在约 5 分钟延迟。"
+                                BalanceAuthMode.MIMO_TOKEN_PLAN -> "Xiaomi MIMO Token Plan 读取 /api/v1/tokenPlan/detail 与 /api/v1/tokenPlan/usage，主值显示剩余百分比，详情显示 Credits 和有效期。"
+                                BalanceAuthMode.VOLCENGINE_BALANCE -> "通过火山引擎控制台会话读取账户可用余额。"
+                                BalanceAuthMode.VOLCENGINE_CODING_PLAN -> "读取火山引擎 Coding Plan 的会话、周和月用量窗口。"
+                                BalanceAuthMode.VOLCENGINE_AGENT_PLAN -> "读取火山引擎 Agent Plan 的 5 小时、周和月用量窗口。"
+                                BalanceAuthMode.OPENCODE_ZEN -> "通过 OpenCode 控制台会话读取 Zen 当前账户余额。"
+                                BalanceAuthMode.OPENCODE_GO -> "使用 OpenCode API Key 读取 /zen/go/v1/usage 的 5 小时、周和月配额。"
+                                BalanceAuthMode.KIMI -> "通过 Kimi 官方设备授权登录，读取 /usages 的 5 小时与周配额，并自动刷新访问令牌。"
+                                BalanceAuthMode.KIMI_BALANCE -> "Kimi 使用 GET /v1/users/me/balance 读取账户余额；API Key 会使用 Android Keystore 加密保存。"
+                                BalanceAuthMode.GLM_BALANCE -> "通过智谱开放平台控制台会话读取账户余额。"
+                                BalanceAuthMode.GLM_CODING_PLAN -> "读取 GLM Coding Plan 的 5 小时与周配额。"
+                                BalanceAuthMode.EMAIL_PASSWORD -> "已知根地址会使用其固定接口分类；其它根地址会依次尝试标准邮箱密码接口、用户名密码接口和 New API 接口。只有登录成功且余额可解析时才会保存连接结果。账号和密码会使用 Android Keystore 加密保存。"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             },
-            dismissButton = { AppTextButton(text = "取消", onClick = ::closeBalanceEditor, enabled = !balanceEditorBusy, modifier = Modifier.fillMaxWidth()) },
+            customActions = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (isCustomEndpointEditor && balanceEditorPage == 1) {
+                        AppTextButton(
+                            text = "上一步",
+                            onClick = ::previousBalanceEditorPage,
+                            enabled = !balanceEditorBusy,
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        AppTextButton(
+                            text = "取消",
+                            onClick = ::closeBalanceEditor,
+                            enabled = !balanceEditorBusy,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    AppButton(
+                        onClick = {
+                            if (isCustomEndpointEditor && balanceEditorPage == 0) {
+                                nextBalanceEditorPage()
+                            } else {
+                                saveBalanceService()
+                            }
+                        },
+                        enabled = !balanceEditorBusy && balanceNameInput.isNotBlank() && balanceEndpointInput.isNotBlank(),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            when {
+                                balanceEditorBusy -> "连接中…"
+                                isCustomEndpointEditor && balanceEditorPage == 0 -> "下一步"
+                                balanceAuthMode.usesBrowserLogin() -> "保存并登录"
+                                else -> "保存"
+                            },
+                            color = Color.White,
+                        )
+                    }
+                }
+            },
         )
+    }
+
+    private fun nextBalanceEditorPage() {
+        val error = customEndpointEndpointPageError(balanceNameInput, balanceEndpointInput)
+        if (error != null) {
+            balanceEditorError = error
+            return
+        }
+        balanceEditorError = ""
+        balanceAdaptationFailed = false
+        balanceEditorPage = 1
+    }
+
+    private fun previousBalanceEditorPage() {
+        if (balanceEditorBusy) return
+        balanceEditorError = ""
+        balanceAdaptationFailed = false
+        balanceEditorPage = 0
     }
 
     @Composable
@@ -4240,6 +4316,7 @@ open class MainActivity : ComponentActivity() {
         balanceIncludeGranted = if (balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) service?.includeGrantedBalance != false else true
         balanceEditorError = ""
         balanceAdaptationFailed = false
+        balanceEditorPage = 0
         balanceEditorBusy = false
         showBalanceEditor = true
     }
@@ -4258,6 +4335,7 @@ open class MainActivity : ComponentActivity() {
         balanceIncludeGranted = true
         balanceEditorError = ""
         balanceAdaptationFailed = false
+        balanceEditorPage = 0
     }
 
     private fun saveBalanceService() {
@@ -4303,6 +4381,9 @@ open class MainActivity : ComponentActivity() {
             StandardBalanceRepository.saveDefinition(this, editing, name, endpoint, selectedAuthMode, balanceIncludeVouchers, balanceIncludeGranted)
         }.getOrElse {
             balanceEditorError = it.message ?: "Endpoint 无效"
+            if (selectedAuthMode == BalanceAuthMode.EMAIL_PASSWORD) {
+                balanceEditorPage = 0
+            }
             return
         }
         loadBalanceServices()

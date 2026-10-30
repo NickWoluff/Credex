@@ -303,3 +303,15 @@ internal fun readGenericCustomEndpointBalance(payload: JSONObject): String? {
     }
     return null
 }
+
+internal fun customEndpointEndpointPageError(name: String, endpoint: String): String? {
+    if (name.isBlank()) return "请输入服务名称"
+    if (endpoint.isBlank()) return "请输入 API 根地址"
+    if (!endpoint.trim().startsWith("https://", ignoreCase = true)) {
+        return "API 根地址必须使用 HTTPS"
+    }
+    if (CustomEndpointCatalog.normalizeRoot(endpoint) == null) {
+        return "请输入有效的 API 根地址"
+    }
+    return null
+}
