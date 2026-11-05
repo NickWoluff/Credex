@@ -155,6 +155,7 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_PINNED = "com.nickwoluff.credex.action.WIDGET_PINNED"
         private const val ACTION_REFRESH = "com.nickwoluff.credex.action.WIDGET_REFRESH"
+        private const val WIDGET_PROGRESS_MAX = 1_000
 
         fun updateAll(context: Context, state: QuotaState = QuotaRepository.current(context), refreshing: Boolean = false) {
             val appContext = context.applicationContext
@@ -354,10 +355,9 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
                         setTextViewText(R.id.widget_secondary_label, service.name)
                         setTextViewText(R.id.widget_secondary_value, balanceDisplayValue(service))
                         setTextViewText(R.id.widget_secondary_reset, balanceSubtext(context, service, compact = true))
-                        val percent = balanceDisplayPercent(service)
-                        if (percent != null) {
-                            setProgressBar(R.id.widget_secondary_progress, 100, percent, false)
-                            setViewVisibility(R.id.widget_secondary_progress, View.VISIBLE)
+                        val progress = balanceDisplayProgress(service)
+                        if (progress != null) {
+                            bindProgress(R.id.widget_secondary_progress, progress)
                         } else {
                             setViewVisibility(R.id.widget_secondary_progress, View.INVISIBLE)
                         }
@@ -386,10 +386,9 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
                 setTextViewText(R.id.widget_primary_label, service.name)
                 setTextViewText(R.id.widget_primary_value, balanceDisplayValue(service))
                 setTextViewText(R.id.widget_primary_reset, balanceSubtext(context, service, compact))
-                val percent = balanceDisplayPercent(service)
-                if (percent != null) {
-                    setProgressBar(R.id.widget_primary_progress, 100, percent, false)
-                    setViewVisibility(R.id.widget_primary_progress, View.VISIBLE)
+                val progress = balanceDisplayProgress(service)
+                if (progress != null) {
+                    bindProgress(R.id.widget_primary_progress, progress)
                 } else {
                     setViewVisibility(R.id.widget_primary_progress, View.INVISIBLE)
                 }
@@ -443,6 +442,11 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
             }
         }
 
+        private fun RemoteViews.bindProgress(viewId: Int, progress: Int) {
+            setProgressBar(viewId, WIDGET_PROGRESS_MAX, progress, false)
+            setViewVisibility(viewId, View.VISIBLE)
+        }
+
         private fun lastUpdatedText(
             context: Context,
             state: QuotaState,
@@ -479,14 +483,10 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
         }
 
         private fun balanceSubtext(context: Context, service: BalanceService, compact: Boolean): String {
-            val fallback = service.detail.ifBlank {
-                listOf(service.status, service.updatedAt.takeUnless { it == "--" })
-                    .filterNotNull()
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · ")
-            }
+            val fallback = service.detail.ifBlank { service.status }
             if (service.displayKind != BalanceDisplayKind.TOKEN_PLAN) return fallback
             if (!compact) return fallback
+            compactQuotaWindowSubtext(service)?.let { return it }
 
             val total = service.total.toBigDecimalOrNull() ?: return fallback.replaceFirst(" · ", "\n")
             val remaining = service.balance.toBigDecimalOrNull() ?: return fallback.replaceFirst(" · ", "\n")
@@ -514,13 +514,12 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
             java.text.DecimalFormat("#,###").format(value.setScale(0, java.math.RoundingMode.DOWN))
         }
 
-        private fun balanceDisplayPercent(service: BalanceService): Int? =
-            balanceDisplayValue(service)
-                .takeIf { service.displayKind == BalanceDisplayKind.TOKEN_PLAN && it.endsWith('%') }
-                ?.dropLast(1)
-                ?.toDoubleOrNull()
-                ?.let { kotlin.math.ceil(it).toInt() }
-                ?.coerceIn(0, 100)
+        private fun balanceDisplayProgress(service: BalanceService): Int? =
+            balanceDisplayRatio(service)
+                ?.multiply(java.math.BigDecimal(WIDGET_PROGRESS_MAX))
+                ?.setScale(0, java.math.RoundingMode.HALF_UP)
+                ?.toInt()
+                ?.coerceIn(0, WIDGET_PROGRESS_MAX)
 
         internal fun isCompact(context: Context, manager: AppWidgetManager, appWidgetId: Int): Boolean =
             WidgetSelectionPreferences.resolveCompact(
@@ -553,4 +552,13 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
                 )
             }
     }
+}
+
+internal fun compactQuotaWindowSubtext(service: BalanceService): String? {
+    if (service.displayKind != BalanceDisplayKind.TOKEN_PLAN) return null
+    if (!service.currency.equals("QUOTA", ignoreCase = true)) return null
+    val window = service.quotaWindows.firstOrNull()
+    val label = if (service.tokenPlanDisplay == TokenPlanDisplay.REMAINING) "剩余" else "已用"
+    val value = balanceDisplayValue(service)
+    return if (window != null) "${window.label} · $label $value" else "$label $value"
 }

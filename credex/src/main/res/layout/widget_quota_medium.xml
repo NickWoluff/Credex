@@ -144,8 +144,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="4dp"
                     android:layout_marginTop="3dp"
-                    android:max="100"
-                    android:progress="64"
+                    android:max="1000"
+                    android:progress="0"
                     android:progressDrawable="@drawable/widget_progress" />
 
                 <TextView
@@ -192,8 +192,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="4dp"
                     android:layout_marginTop="3dp"
-                    android:max="100"
-                    android:progress="82"
+                    android:max="1000"
+                    android:progress="0"
                     android:progressDrawable="@drawable/widget_progress" />
 
                 <TextView

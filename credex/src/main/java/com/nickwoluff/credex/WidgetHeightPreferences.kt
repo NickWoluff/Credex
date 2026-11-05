@@ -8,10 +8,11 @@ internal object WidgetHeightPreferences {
     private const val PREFS = "quota_widget_height"
     private const val CUSTOM_HEIGHT_INPUT = "custom_height_input"
     private const val VERTICAL_OFFSET_DP = "vertical_offset_dp"
-    const val DEFAULT_HEIGHT_DP = 150
+    const val DEFAULT_HEIGHT_DP = 145
     const val MIN_HEIGHT_DP = 48
     const val MAX_HEIGHT_DP = 1_000
-    const val DEFAULT_CORNER_RADIUS_DP = 18
+    const val DEFAULT_CORNER_RADIUS_DP = 24
+    const val DEFAULT_VERTICAL_OFFSET_DP = 0
     const val MIN_VERTICAL_OFFSET_DP = -10
     const val MAX_VERTICAL_OFFSET_DP = 10
 
@@ -30,7 +31,8 @@ internal object WidgetHeightPreferences {
     }
 
     fun verticalOffsetDp(context: Context): Int =
-        preferences(context).getInt(VERTICAL_OFFSET_DP, 0).coerceIn(MIN_VERTICAL_OFFSET_DP, MAX_VERTICAL_OFFSET_DP)
+        preferences(context).getInt(VERTICAL_OFFSET_DP, DEFAULT_VERTICAL_OFFSET_DP)
+            .coerceIn(MIN_VERTICAL_OFFSET_DP, MAX_VERTICAL_OFFSET_DP)
 
     fun setVerticalOffsetDp(context: Context, value: Int) {
         preferences(context).edit {

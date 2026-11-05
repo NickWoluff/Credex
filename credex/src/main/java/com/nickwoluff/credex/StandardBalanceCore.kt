@@ -2369,18 +2369,11 @@ private fun formatTokenCount(value: java.math.BigDecimal): String = runCatching 
 
 /** Stable, credential-free balance text shared by the app, widgets, and rear-display surfaces. */
 internal fun balanceDisplayValue(service: BalanceService): String {
-    if (service.balance == "--") return "--"
     if (service.displayKind == BalanceDisplayKind.TOKEN_PLAN) {
-        val total = service.total.toBigDecimalOrNull() ?: return "--"
-        val remaining = service.balance.toBigDecimalOrNull() ?: return "--"
-        if (total.signum() <= 0) return "--"
-        val used = service.used.toBigDecimalOrNull() ?: total.subtract(remaining)
-        val presented = when (service.tokenPlanDisplay) {
-            TokenPlanDisplay.USED -> used.max(java.math.BigDecimal.ZERO)
-            TokenPlanDisplay.REMAINING -> remaining.max(java.math.BigDecimal.ZERO)
-        }
-        return "${presented.divide(total, 4, java.math.RoundingMode.HALF_UP).multiply(java.math.BigDecimal(100)).setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()}%"
+        val ratio = balanceDisplayRatio(service) ?: return "--"
+        return "${ratio.multiply(java.math.BigDecimal(100)).setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()}%"
     }
+    if (service.balance == "--") return "--"
     val amount = runCatching {
         java.math.BigDecimal(service.balance).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
     }.getOrDefault(service.balance)
@@ -2389,4 +2382,19 @@ internal fun balanceDisplayValue(service: BalanceService): String {
         service.currency.equals("CNY", ignoreCase = true) || service.currency == "¥" -> "¥$amount"
         else -> "${service.currency} $amount"
     }
+}
+
+/** The exact displayed quota ratio shared by text and widget progress rendering. */
+internal fun balanceDisplayRatio(service: BalanceService): java.math.BigDecimal? {
+    if (service.displayKind != BalanceDisplayKind.TOKEN_PLAN || service.balance == "--") return null
+    val total = service.total.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: return null
+    val remaining = service.balance.toBigDecimalOrNull() ?: return null
+    val used = service.used.toBigDecimalOrNull() ?: total.subtract(remaining)
+    val presented = when (service.tokenPlanDisplay) {
+        TokenPlanDisplay.USED -> used
+        TokenPlanDisplay.REMAINING -> remaining
+    }.max(java.math.BigDecimal.ZERO)
+    return presented.divide(total, 6, java.math.RoundingMode.HALF_UP)
+        .min(java.math.BigDecimal.ONE)
+        .max(java.math.BigDecimal.ZERO)
 }
