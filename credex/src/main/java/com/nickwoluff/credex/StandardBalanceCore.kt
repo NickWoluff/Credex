@@ -463,13 +463,11 @@ object StandardBalanceRepository {
             .take(limit.coerceAtLeast(0))
     }
 
-    fun hasConfiguredService(context: Context): Boolean = stored(context, decryptSecrets = false).isNotEmpty()
-
     fun hasAuthenticatedService(context: Context): Boolean = stored(context, decryptSecrets = false).any {
         it.accessToken.isNotBlank() ||
-            (it.email.isNotBlank() && it.password.isNotBlank()) ||
-            (it.subjectId.isNotBlank() && it.sessionToken.isNotBlank()) ||
-            (it.authMode.usesBrowserLogin() && it.sessionToken.isNotBlank())
+            it.email.isNotBlank() && it.password.isNotBlank() ||
+            it.subjectId.isNotBlank() && it.sessionToken.isNotBlank() ||
+            it.authMode.usesBrowserLogin() && it.sessionToken.isNotBlank()
     }
 
     data class Credentials(val account: String, val secret: String)
@@ -505,18 +503,6 @@ object StandardBalanceRepository {
             replace(context, service.copy(tokenPlanDisplay = display))
             notifyChanged(context)
         }
-    }
-
-    fun move(context: Context, id: String, direction: Int) {
-        if (direction == 0) return
-        val values = stored(context).toMutableList()
-        val index = values.indexOfFirst { it.id == id }
-        val target = index + direction
-        if (index < 0 || target !in values.indices) return
-        val item = values.removeAt(index)
-        values.add(target, item)
-        saveStored(context, values)
-        notifyChanged(context)
     }
 
     fun reorder(context: Context, orderedIds: List<String>) {
@@ -871,7 +857,6 @@ object StandardBalanceRepository {
         }
         authenticationFailure?.let { throw CustomEndpointAuthenticationException(it) }
         throw CustomEndpointAdaptationException(
-            endpoint = service.endpoint,
             attemptedContracts = selection.adapters.map { it.contract },
             cause = lastFailure,
         )
@@ -1233,7 +1218,7 @@ object StandardBalanceRepository {
             if (
                 adapter.refreshSuffix != null &&
                 current.refreshToken.isNotBlank() &&
-                current.expiresAtMillis in 1..(now + 60_000L)
+                current.expiresAtMillis in 1..now + 60_000L
             ) {
                 current = refreshTokens(context, current, adapter)
             }
@@ -1588,7 +1573,7 @@ object StandardBalanceRepository {
                     val detail = item.optJSONObject("detail") ?: continue
                     val duration = window?.optLong("duration") ?: 0L
                     val label = item.optString("name").ifBlank {
-                        if (duration == 300L) "5 小时" else "${duration} 分钟"
+                        if (duration == 300L) "5 小时" else "$duration 分钟"
                     }
                     add(
                         ServiceQuotaWindow(
@@ -1942,12 +1927,6 @@ object StandardBalanceRepository {
 
     private fun String.asciiHeader(): String = replace(Regex("[^\\x20-\\x7E]"), "").trim().ifBlank { "unknown" }
 
-    private fun unwrap(payload: JSONObject): JSONObject {
-        val code = payload.optInt("code", 0)
-        check(code == 0) { payload.optString("message", "请求失败") }
-        return payload.optJSONObject("data") ?: payload
-    }
-
     private fun unwrapMimo(payload: JSONObject): JSONObject {
         val code = payload.optInt("code", 0)
         if (code != 0) {
@@ -1962,7 +1941,7 @@ object StandardBalanceRepository {
 
     private fun isMimoSessionAuthFailure(error: Exception): Boolean =
         error is MimoSessionExpiredException ||
-            (error is BalanceHttpException && error.statusCode in setOf(401, 403))
+            error is BalanceHttpException && error.statusCode in setOf(401, 403)
 
     private fun siliconFlowData(payload: JSONObject): JSONObject {
         val code = payload.optInt("code", 20000)
@@ -2031,9 +2010,7 @@ object StandardBalanceRepository {
             financialInfo?.opt("available"),
             data.opt("available"),
             data.opt("balance"),
-        ).asSequence()
-            .mapNotNull(::amountDecimal)
-            .firstOrNull()
+        ).firstNotNullOfOrNull(::amountDecimal)
         return raw?.let(::siliconFlowConsoleCashToYuan)
     }
 
@@ -2257,7 +2234,6 @@ object StandardBalanceRepository {
         QuotaDisplayContract.notifyAll(context)
     }
 
-    private fun String.toUriCompat() = android.net.Uri.parse(this)
 }
 
 private val MIMO_SESSION_COOKIE_NAMES = setOf(
@@ -2319,10 +2295,10 @@ internal data class MimoTokenPlanSnapshot(
 internal fun readMimoPayAsYouGo(payload: JSONObject): MimoPayAsYouGoSnapshot {
     val data = payload.optJSONObject("data") ?: payload
     val cash = listOf("balance", "cashBalance", "cash_balance", "availableBalance", "available_balance")
-        .asSequence().mapNotNull { amountDecimalValue(data.opt(it)) }.firstOrNull()
+        .firstNotNullOfOrNull { amountDecimalValue(data.opt(it)) }
         ?: error("Xiaomi MIMO 响应中没有余额")
     val gift = listOf("giftBalance", "gift_balance", "赠送余额")
-        .asSequence().mapNotNull { amountDecimalValue(data.opt(it)) }.firstOrNull()
+        .firstNotNullOfOrNull { amountDecimalValue(data.opt(it)) }
     return MimoPayAsYouGoSnapshot(cash, gift)
 }
 
@@ -2332,9 +2308,9 @@ internal fun readMimoTokenPlan(detailPayload: JSONObject, usagePayload: JSONObje
     val pair = findTokenUsagePair(usage) ?: findTokenUsagePair(detail)
         ?: error("Xiaomi MIMO Token Plan 响应中没有用量")
     val plan = listOf("planName", "plan_name", "name", "planCode", "plan_code")
-        .asSequence().map { detail.optString(it).trim() }.firstOrNull { it.isNotBlank() } ?: "Token Plan"
+        .map { detail.optString(it).trim() }.firstOrNull { it.isNotBlank() } ?: "Token Plan"
     val expires = listOf("expireTime", "expire_time", "validUntil", "valid_until", "endTime", "end_time")
-        .asSequence().map { detail.optString(it).trim() }.firstOrNull { it.isNotBlank() }.orEmpty()
+        .map { detail.optString(it).trim() }.firstOrNull { it.isNotBlank() }.orEmpty()
     val used = pair.first.max(java.math.BigDecimal.ZERO)
     val limit = pair.second.max(used)
     return MimoTokenPlanSnapshot(plan, used, limit, limit.subtract(used).max(java.math.BigDecimal.ZERO), expires)
@@ -2344,9 +2320,9 @@ private fun findTokenUsagePair(value: Any?): Pair<java.math.BigDecimal, java.mat
     when (value) {
         is JSONObject -> {
             val used = listOf("used", "usedTokens", "used_tokens", "usedCredits", "used_credits", "usage", "consumed")
-                .asSequence().mapNotNull { amountDecimalValue(value.opt(it)) }.firstOrNull()
+                .firstNotNullOfOrNull { amountDecimalValue(value.opt(it)) }
             val limit = listOf("limit", "total", "totalTokens", "total_tokens", "totalCredits", "total_credits", "quota", "credits")
-                .asSequence().mapNotNull { amountDecimalValue(value.opt(it)) }.firstOrNull()
+                .firstNotNullOfOrNull { amountDecimalValue(value.opt(it)) }
             if (used != null && limit != null && limit.signum() > 0) return used to limit
             val keys = value.keys()
             while (keys.hasNext()) findTokenUsagePair(value.opt(keys.next()))?.let { return it }
@@ -2378,7 +2354,7 @@ internal fun balanceDisplayValue(service: BalanceService): String {
         java.math.BigDecimal(service.balance).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
     }.getOrDefault(service.balance)
     return when {
-        service.currency.equals("USD", ignoreCase = true) -> "\$$amount"
+        service.currency.equals("USD", ignoreCase = true) -> "$" + amount
         service.currency.equals("CNY", ignoreCase = true) || service.currency == "¥" -> "¥$amount"
         else -> "${service.currency} $amount"
     }

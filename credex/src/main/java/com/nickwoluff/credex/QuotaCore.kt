@@ -57,9 +57,9 @@ data class QuotaState(
                     updatedAt = it.optString("updated", "--"),
                     lastAttemptAt = it.optString("attempted", "--"),
                     health = runCatching { QuotaHealth.valueOf(it.optString("health")) }.getOrDefault(
-                        when {
-                            status == "OK" -> QuotaHealth.FRESH
-                            status == "Not signed in" -> QuotaHealth.SIGNED_OUT
+                        when (status) {
+                            "OK" -> QuotaHealth.FRESH
+                            "Not signed in" -> QuotaHealth.SIGNED_OUT
                             else -> QuotaHealth.CACHED
                         },
                     ),
@@ -123,9 +123,9 @@ internal object QuotaResetText {
 
     private fun countdown(resetAtEpoch: Long, nowEpoch: Long): String? {
         if (resetAtEpoch <= nowEpoch) return null
-        val totalMinutes = ((resetAtEpoch - nowEpoch) + 59L) / 60L
+        val totalMinutes = (resetAtEpoch - nowEpoch + 59L) / 60L
         val days = totalMinutes / (24L * 60L)
-        val hours = (totalMinutes % (24L * 60L)) / 60L
+        val hours = totalMinutes % (24L * 60L) / 60L
         val minutes = totalMinutes % 60L
         val text = buildString {
             if (days > 0) append(days).append("天")
@@ -137,9 +137,9 @@ internal object QuotaResetText {
 
     private fun compactCountdown(resetAtEpoch: Long, nowEpoch: Long): String? {
         if (resetAtEpoch <= nowEpoch) return null
-        val totalMinutes = ((resetAtEpoch - nowEpoch) + 59L) / 60L
+        val totalMinutes = (resetAtEpoch - nowEpoch + 59L) / 60L
         val days = totalMinutes / (24L * 60L)
-        val hours = (totalMinutes % (24L * 60L)) / 60L
+        val hours = totalMinutes % (24L * 60L) / 60L
         val minutes = totalMinutes % 60L
         val text = when {
             days > 0 && hours > 0 -> "${days}天${hours}小时后更新"
@@ -317,23 +317,6 @@ object QuotaRepository {
         }
     }
 
-    fun saveAccessToken(context: Context, token: String) {
-        synchronized(sessionLock) {
-            val p = prefs(context)
-            p.edit {
-                putString(TOKEN, SecretBox.seal(token))
-                putLong(SESSION_EPOCH, p.getLong(SESSION_EPOCH, 0L) + 1L)
-                remove(REFRESH_TOKEN)
-                remove(ACCOUNT)
-                remove(STATE)
-                remove(LAST)
-            }
-            if (backgroundEnabled(context)) QuotaRefreshScheduler.schedule(context)
-            QuotaAppWidgetProvider.updateAll(context, QuotaState())
-            notifyRearSurfaces(context)
-        }
-    }
-
     fun clear(context: Context) {
         synchronized(sessionLock) {
             val p = prefs(context)
@@ -472,12 +455,6 @@ object CodexOAuth {
         val challenge = Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray()), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         val url = "https://auth.openai.com/oauth/authorize?response_type=code&client_id=$CLIENT_ID&redirect_uri=${enc(REDIRECT_URI)}&scope=${enc("openid profile email offline_access")}&code_challenge=$challenge&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true&state=$state&originator=codex_quota_android"
         return AuthSession(url, state, verifier)
-    }
-
-    fun exchangeToken(code: String, verifier: String, onResult: (Result<OAuthTokens>) -> Unit) {
-        Thread {
-            runCatching { exchange(code, verifier) }.also(onResult)
-        }.start()
     }
 
     fun cancel() {

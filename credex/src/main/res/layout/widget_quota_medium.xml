@@ -245,6 +245,7 @@
         android:layout_width="1dp"
         android:layout_height="108dp"
         android:layout_gravity="center"
+        android:orientation="vertical"
         android:background="@color/widget_border" />
 
 </FrameLayout>

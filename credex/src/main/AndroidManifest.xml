@@ -19,7 +19,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:enableOnBackInvokedCallback="true"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        >
         <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -62,8 +63,7 @@
         <provider
             android:name=".QuotaProvider"
             android:authorities="com.nickwoluff.credex"
-            android:exported="true"
-            tools:ignore="ExportedContentProvider" />
+            android:exported="true" />
         <service
             android:name=".QuotaRefreshJobService"
             android:exported="false"

@@ -78,8 +78,6 @@ object QuotaRefreshScheduler {
         cancelFallback(context)
     }
 
-    fun isScheduled(context: Context) = context.getSystemService(JobScheduler::class.java).getPendingJob(PERIODIC_JOB_ID) != null
-
     internal fun onRefreshFinished(context: Context) {
         scheduleFallback(context, reset = true)
     }
@@ -169,7 +167,6 @@ internal object QuotaRefreshCoordinator {
         val balanceTask = if (StandardBalanceRepository.hasAuthenticatedService(appContext)) {
             executor.submit<Unit> {
                 StandardBalanceRepository.refreshAll(appContext, force)
-                Unit
             }
         } else {
             null
@@ -222,7 +219,6 @@ class QuotaRefreshJobService : JobService() {
                 // Lifecycle arbitration happens on the same looper as onStopJob().
                 mainHandler.post { finishJob(work, changed, retry) }
             }
-            Unit
         }
         work = RunningJob(params, task, lease)
         running.put(params.jobId, work)?.let { previous ->

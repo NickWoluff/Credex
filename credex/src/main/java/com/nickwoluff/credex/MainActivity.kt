@@ -7,7 +7,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.ContentObserver
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color as AndroidColor
 import android.icu.text.Transliterator
 import android.os.Build
 import android.os.Bundle
@@ -109,6 +111,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -129,14 +132,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuGroup
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenuPopup
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -151,10 +150,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState as rememberMaterialTopAppBarState
 import androidx.compose.runtime.Composable
@@ -174,6 +174,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -183,11 +185,11 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
@@ -195,11 +197,14 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.widthIn
@@ -207,8 +212,10 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.text.DecimalFormat
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
@@ -339,6 +346,7 @@ private fun Context.performXiaomiFlingBoundaryHaptic(): Boolean {
         } ?: return false
         if (!vibrator.hasVibrator()) return false
 
+        // HyperOS 使用厂商扩展效果 ID；该调用仅在 API 33+ 的厂商设备上执行。
         val effect = VibrationEffect.createPredefined(XIAOMI_FLING_BOUNDARY_EFFECT_ID)
         val attributes = VibrationAttributes.Builder()
             .setUsage(VibrationAttributes.USAGE_HARDWARE_FEEDBACK)
@@ -411,14 +419,14 @@ private fun KeepDialogNavigationImmersive() {
     SideEffect {
         val dialogWindow = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
         WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
-        dialogWindow.navigationBarColor = android.graphics.Color.TRANSPARENT
+        dialogWindow.navigationBarColor = AndroidColor.TRANSPARENT
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             dialogWindow.isNavigationBarContrastEnforced = false
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 open class MainActivity : ComponentActivity() {
     private var activityPage = ActivityPage.ROOT
     private var state by mutableStateOf(QuotaState())
@@ -459,7 +467,7 @@ open class MainActivity : ComponentActivity() {
     private var balanceIncludeGranted by mutableStateOf(true)
     private var balanceEditorError by mutableStateOf("")
     private var balanceAdaptationFailed by mutableStateOf(false)
-    private var balanceEditorPage by mutableStateOf(0)
+    private var balanceEditorPage by mutableIntStateOf(0)
     private var balanceEditorBusy by mutableStateOf(false)
     private var deletingBalanceServiceId by mutableStateOf<String?>(null)
     private var pendingSiliconFlowLoginServiceId: String? = null
@@ -550,7 +558,7 @@ open class MainActivity : ComponentActivity() {
         val serviceId = pendingSiliconFlowLoginServiceId
         pendingSiliconFlowLoginServiceId = null
         if (serviceId == null) return@registerForActivityResult
-        if (result.resultCode != android.app.Activity.RESULT_OK) {
+        if (result.resultCode != RESULT_OK) {
             message = "已取消 SiliconFlow 登录"
             return@registerForActivityResult
         }
@@ -615,8 +623,8 @@ open class MainActivity : ComponentActivity() {
             }
         }
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            statusBarStyle = SystemBarStyle.auto(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
         )
         configureImmersiveNavigation()
         loadVisualState()
@@ -675,7 +683,6 @@ open class MainActivity : ComponentActivity() {
     /** Keep HyperOS' gesture handle over the app surface instead of reserving a solid nav bar. */
     private fun configureImmersiveNavigation() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.navigationBarColor = android.graphics.Color.TRANSPARENT
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
@@ -685,7 +692,7 @@ open class MainActivity : ComponentActivity() {
         val serviceId = pendingMimoLoginServiceId
         pendingMimoLoginServiceId = null
         if (serviceId == null) return@registerForActivityResult
-        if (result.resultCode != android.app.Activity.RESULT_OK) {
+        if (result.resultCode != RESULT_OK) {
             message = "已取消 Xiaomi MIMO 登录"
             return@registerForActivityResult
         }
@@ -713,7 +720,7 @@ open class MainActivity : ComponentActivity() {
         val pending = pendingConsoleLogin
         pendingConsoleLogin = null
         if (pending == null) return@registerForActivityResult
-        if (result.resultCode != android.app.Activity.RESULT_OK) {
+        if (result.resultCode != RESULT_OK) {
             message = "已取消平台登录"
             return@registerForActivityResult
         }
@@ -742,7 +749,7 @@ open class MainActivity : ComponentActivity() {
     }
     private val kimiLoginLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         loadBalanceServices()
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
+        if (result.resultCode == RESULT_OK) {
             prepareLiveSync()
             message = "Kimi 已连接"
         } else {
@@ -833,7 +840,7 @@ open class MainActivity : ComponentActivity() {
             isHelp -> "help"
             isDisclaimer -> "disclaimer"
             isSettings -> "settings"
-            isDetail -> "detail:${detailBrand.orEmpty()}"
+            isDetail -> "detail:${detailBrand}"
             else -> "root"
         }
         if (uiStyle == UiStyle.MIUIX) {
@@ -886,7 +893,7 @@ open class MainActivity : ComponentActivity() {
                             isReferences -> "引用"
                             isHelp -> "帮助"
                             isDisclaimer -> "声明"
-                            isDetail -> detailBrand.orEmpty()
+                            isDetail -> detailBrand
                             selectedTab == AppTab.HOME -> "视图"
                             else -> "配置"
                         })
@@ -947,7 +954,7 @@ open class MainActivity : ComponentActivity() {
                 isReferences -> ReferencesScreen(contentModifier)
                 isHelp -> HelpScreen(contentModifier)
                 isDisclaimer -> DisclaimerScreen(contentModifier)
-                isDetail -> ConfigurationBrandScreen(detailBrand.orEmpty(), contentModifier)
+                isDetail -> ConfigurationBrandScreen(detailBrand, contentModifier)
                 else -> HorizontalPager(
                     state = pagerState,
                     modifier = contentModifier,
@@ -1009,7 +1016,7 @@ open class MainActivity : ComponentActivity() {
                         .fillMaxWidth()
                         .miuixBackdropBlur(
                         backdrop = backdrop,
-                        shape = androidx.compose.ui.graphics.RectangleShape,
+                        shape = RectangleShape,
                         blurRadius = 36f,
                         enabled = miuixBlur,
                     ),
@@ -1145,7 +1152,7 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun AppCard(
         modifier: Modifier = Modifier,
-        shape: androidx.compose.ui.graphics.Shape = MaterialTheme.shapes.large,
+        shape: Shape = MaterialTheme.shapes.large,
         content: @Composable ColumnScope.() -> Unit,
     ) {
         if (uiStyle == UiStyle.MIUIX) {
@@ -1164,7 +1171,7 @@ open class MainActivity : ComponentActivity() {
     private fun materialCardColor(): Color = MaterialTheme.colorScheme.surfaceContainerLowest
 
     @Composable
-    private fun groupedMaterialShape(index: Int, total: Int): androidx.compose.ui.graphics.Shape {
+    private fun groupedMaterialShape(index: Int, total: Int): Shape {
         if (uiStyle == UiStyle.MIUIX || total <= 1) return MaterialTheme.shapes.large
         val normal = 28.dp
         val compact = 4.dp
@@ -1192,7 +1199,7 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun AppSurface(
         modifier: Modifier = Modifier,
-        shape: androidx.compose.ui.graphics.Shape = androidx.compose.ui.graphics.RectangleShape,
+        shape: Shape = RectangleShape,
         color: Color,
         border: BorderStroke? = null,
         content: @Composable () -> Unit,
@@ -1208,7 +1215,7 @@ open class MainActivity : ComponentActivity() {
     private fun AppClickableSurface(
         onClick: () -> Unit,
         modifier: Modifier = Modifier,
-        shape: androidx.compose.ui.graphics.Shape,
+        shape: Shape,
         color: Color,
         content: @Composable () -> Unit,
     ) {
@@ -1330,28 +1337,6 @@ open class MainActivity : ComponentActivity() {
                     contentColor = MaterialTheme.colorScheme.onError,
                 ),
             ) { Text(text) }
-        }
-    }
-
-    @Composable
-    private fun AppChoiceChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-        if (uiStyle == UiStyle.MIUIX) {
-            MiuixButton(
-                onClick = onClick,
-                modifier = modifier,
-                colors = if (selected) MiuixButtonDefaults.buttonColorsPrimary(contentColor = Color.White) else MiuixButtonDefaults.buttonColors(),
-            ) { Text(label, color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface) }
-        } else {
-            FilterChip(
-                selected = selected,
-                onClick = onClick,
-                label = { Text(label) },
-                modifier = modifier,
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            )
         }
     }
 
@@ -1712,32 +1697,15 @@ open class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun BalanceStatusPill() {
-        val active = balanceServices.any { it.visible && it.health == BalanceHealth.FRESH }
-        AppSurface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
-            Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(6.dp).background(if (active) QuotaColors.Success else QuotaColors.Warning, CircleShape))
-                Spacer(Modifier.width(7.dp))
-                Text(if (active) "已连接" else "需检查", style = MaterialTheme.typography.labelMedium)
-            }
-        }
-    }
-
-    @Composable
-    private fun BalanceServiceCards(
-        services: List<BalanceService>,
-        manage: Boolean,
-        showTitle: Boolean = true,
-    ) {
+    private fun BalanceServiceCards(services: List<BalanceService>) {
         Column(verticalArrangement = Arrangement.spacedBy(if (uiStyle == UiStyle.MATERIAL) 3.dp else 10.dp)) {
-            if (showTitle) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("服务", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    if (!manage) Text("${services.size} 个", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
             services.forEachIndexed { index, service ->
-                BalanceServiceCard(service, manage, index, services.size)
+                BalanceServiceCard(
+                    service = service,
+                    manage = true,
+                    index = index,
+                    total = services.size,
+                )
             }
         }
     }
@@ -1746,9 +1714,9 @@ open class MainActivity : ComponentActivity() {
     private fun BalanceServiceCard(
         service: BalanceService,
         manage: Boolean,
+        modifier: Modifier = Modifier,
         index: Int = 0,
         total: Int = 1,
-        modifier: Modifier = Modifier,
         dragModifier: Modifier = Modifier,
     ) {
         val statusColor = when (service.health) {
@@ -1763,10 +1731,10 @@ open class MainActivity : ComponentActivity() {
             val totalCredits = service.total.toBigDecimalOrNull()
             val remainingCredits = service.balance.toBigDecimalOrNull()
             val usedCredits = service.used.toBigDecimalOrNull()
-                ?: totalCredits?.subtract(remainingCredits ?: java.math.BigDecimal.ZERO)
+                ?: totalCredits?.subtract(remainingCredits ?: BigDecimal.ZERO)
             val progressCredits = if (service.tokenPlanDisplay == TokenPlanDisplay.REMAINING) remainingCredits else usedCredits
             if (totalCredits != null && progressCredits != null && totalCredits.signum() > 0) {
-                progressCredits.divide(totalCredits, 4, java.math.RoundingMode.HALF_UP).toFloat().coerceIn(0f, 1f)
+                progressCredits.divide(totalCredits, 4, RoundingMode.HALF_UP).toFloat().coerceIn(0f, 1f)
             } else {
                 null
             }
@@ -1829,7 +1797,7 @@ open class MainActivity : ComponentActivity() {
                             val used = window.used.toBigDecimalOrNull()
                             val totalValue = window.total.toBigDecimalOrNull()
                             val usedProgress = if (used != null && totalValue != null && totalValue.signum() > 0) {
-                                used.divide(totalValue, 4, java.math.RoundingMode.HALF_UP).toFloat().coerceIn(0f, 1f)
+                                used.divide(totalValue, 4, RoundingMode.HALF_UP).toFloat().coerceIn(0f, 1f)
                             } else 0f
                             val progress = if (service.tokenPlanDisplay == TokenPlanDisplay.REMAINING) 1f - usedProgress else usedProgress
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1885,106 +1853,6 @@ open class MainActivity : ComponentActivity() {
         }
     }
 
-    @Composable
-    private fun QuotaHero(label: String, value: Int, reset: String, resetAtEpoch: Long) {
-        val safe = value.coerceIn(0, 100)
-        AppCard {
-            Column(Modifier.padding(horizontal = 22.dp, vertical = 24.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (showProviderIcons) {
-                        PlatformLogo(PlatformBrand.OPENAI_CODEX, 24.dp)
-                        Spacer(Modifier.width(10.dp))
-                    }
-                    Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("$safe%", style = MaterialTheme.typography.displayLarge)
-                Spacer(Modifier.height(26.dp))
-                AppLinearProgress(
-                    progress = safe / 100f,
-                    modifier = Modifier.fillMaxWidth().height(7.dp).clip(CircleShape),
-                )
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    "重置于 ${QuotaResetText.app(reset, resetAtEpoch)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-
-    @Composable
-    private fun QuotaCompact(label: String, value: Int, reset: String, resetAtEpoch: Long) {
-        val safe = value.coerceIn(0, 100)
-        AppCard {
-            Column(Modifier.padding(18.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (showProviderIcons) {
-                                PlatformLogo(PlatformBrand.OPENAI_CODEX, 24.dp)
-                                Spacer(Modifier.width(10.dp))
-                            }
-                            Text(label, style = MaterialTheme.typography.titleMedium)
-                        }
-                        Text(
-                            "重置于 ${QuotaResetText.app(reset, resetAtEpoch)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Text("$safe%", style = MaterialTheme.typography.headlineMedium)
-                }
-                Spacer(Modifier.height(16.dp))
-                AppLinearProgress(
-                    progress = safe / 100f,
-                    modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
-                )
-            }
-        }
-    }
-
-    @Composable
-    private fun EmptyQuotaState() {
-        AppCard {
-            Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                BrandMark(52.dp, prominent = true)
-                Spacer(Modifier.height(20.dp))
-                Text(if (state.health == QuotaHealth.AUTH_REQUIRED) "需要重新授权" else "暂无配额窗口", style = MaterialTheme.typography.titleLarge)
-                Text(
-                    if (state.health == QuotaHealth.AUTH_REQUIRED) "OpenAI 授权已过期，请在设置中重新连接。" else "OpenAI 本次没有返回可显示的用量窗口。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-        }
-    }
-
-    @Composable
-    private fun SyncHealthRow() {
-        val (color, title, detail) = when (state.health) {
-            QuotaHealth.FRESH -> Triple(QuotaColors.Success, "最后更新", state.updatedAt)
-            QuotaHealth.EMPTY -> Triple(QuotaColors.Success, "连接正常", "未返回配额窗口")
-            QuotaHealth.CACHED -> Triple(QuotaColors.Warning, "正在显示缓存", "上次成功 ${state.updatedAt}")
-            QuotaHealth.AUTH_REQUIRED -> Triple(QuotaColors.Error, "授权已过期", "请重新连接 OpenAI")
-            QuotaHealth.SIGNED_OUT -> Triple(MaterialTheme.colorScheme.onSurfaceVariant, "未连接", "")
-        }
-        AppCard {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).background(color, CircleShape))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.labelLarge)
-                    if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (refreshing) Text("更新中…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-
     private fun brandLabel(mode: BalanceAuthMode): String = platformBrand(mode).displayName
 
     private fun serviceTypeLabel(mode: BalanceAuthMode): String = when (mode) {
@@ -2027,7 +1895,7 @@ open class MainActivity : ComponentActivity() {
                             .joinToString(" | ")
                     }
                     SettingsActionRow(
-                        icon = if (showProviderIcons) ({ PlatformLogo(platform, 26.dp) }) else null,
+                        icon = if (showProviderIcons) { { PlatformLogo(platform, 26.dp) } } else null,
                         title = brand,
                         subtitle = subtitle,
                         onClick = { openActivityPage(ActivityPage.CONFIGURATION, brand) },
@@ -2092,7 +1960,7 @@ open class MainActivity : ComponentActivity() {
                 if (services.isEmpty()) {
                     Text("该品牌暂无服务", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    BalanceServiceCards(services, manage = true, showTitle = false)
+                    BalanceServiceCards(services)
                 }
                 AppNeutralButton(onClick = {
                     addBrand = when (brand) {
@@ -2229,7 +2097,10 @@ open class MainActivity : ComponentActivity() {
         }
 
         if (uiStyle == UiStyle.MATERIAL) {
-            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            val sheetState = rememberBottomSheetState(
+                initialValue = SheetValue.Hidden,
+                enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+            )
             ModalBottomSheet(
                 onDismissRequest = { showAddServices = false; addBrand = null },
                 sheetState = sheetState,
@@ -2272,7 +2143,7 @@ open class MainActivity : ComponentActivity() {
             subtitle = entry.subtitle,
             index = index,
             total = total,
-            leading = if (showProviderIcons) ({ PlatformLogo(entry.platform, 28.dp) }) else null,
+            leading = if (showProviderIcons) { { PlatformLogo(entry.platform, 28.dp) } } else null,
             onClick = { addBrand = entry.brand },
         )
     }
@@ -2301,18 +2172,6 @@ open class MainActivity : ComponentActivity() {
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-        }
-    }
-
-    @Composable
-    private fun StatusPill() {
-        val active = state.health == QuotaHealth.FRESH || state.health == QuotaHealth.EMPTY
-        AppSurface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
-            Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(6.dp).background(if (active) QuotaColors.Success else QuotaColors.Warning, CircleShape))
-                Spacer(Modifier.width(7.dp))
-                Text(if (active) "已连接" else "需检查", style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -2387,13 +2246,15 @@ open class MainActivity : ComponentActivity() {
             SettingsSection("同步") {
                 SettingsSwitchRow(
                     title = "持续同步",
-                    subtitle = when {
-                        !backgroundEnabled -> "已关闭；卡片仍会在唤醒时刷新"
-                        backgroundEnabled && !notificationSyncEnabled -> "静默模式：使用系统定时任务，不显示常驻通知"
-                        backgroundEnabled && !notificationsAllowed -> "通知未授权；仍会使用系统定时任务"
-                        serviceRunning -> "前台服务正在运行"
-                        backgroundEnabled -> "正在等待服务启动"
-                        else -> "已关闭；卡片仍会在唤醒时刷新"
+                    subtitle = if (!backgroundEnabled) {
+                        "已关闭；卡片仍会在唤醒时刷新"
+                    } else {
+                        when {
+                            !notificationSyncEnabled -> "静默模式：使用系统定时任务，不显示常驻通知"
+                            !notificationsAllowed -> "通知未授权；仍会使用系统定时任务"
+                            serviceRunning -> "前台服务正在运行"
+                            else -> "正在等待服务启动"
+                        }
                     },
                     checked = backgroundEnabled,
                     onCheckedChange = { enabled ->
@@ -2640,7 +2501,7 @@ open class MainActivity : ComponentActivity() {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Text("上下偏移", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "${widgetVerticalOffset} dp",
+                        "$widgetVerticalOffset dp",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -2771,7 +2632,7 @@ open class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             SettingsSection("当前") {
-                SettingsValueRow("Credex 版本", BuildConfig.VERSION_NAME)
+                SettingsValueRow()
             }
             SettingsSection("更新") {
                 SettingsActionRow(
@@ -2804,7 +2665,10 @@ open class MainActivity : ComponentActivity() {
         }
 
         if (uiStyle == UiStyle.MATERIAL) {
-            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            val sheetState = rememberBottomSheetState(
+                initialValue = SheetValue.Hidden,
+                enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+            )
             ModalBottomSheet(
                 onDismissRequest = dismiss,
                 sheetState = sheetState,
@@ -2873,7 +2737,7 @@ open class MainActivity : ComponentActivity() {
                     Text(
                         text = "发现新版本 ${update.version}",
                         style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            fontWeight = FontWeight.Bold,
                         ),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -2985,7 +2849,7 @@ open class MainActivity : ComponentActivity() {
                     MiuixText(
                         text = "发现新版本 ${update.version}",
                         style = MiuixTheme.textStyles.title3.copy(
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            fontWeight = FontWeight.Bold,
                         ),
                         color = colors.onSurface,
                     )
@@ -3072,8 +2936,10 @@ open class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun updateNotesMaxHeight(): androidx.compose.ui.unit.Dp {
-        val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    private fun updateNotesMaxHeight(): Dp {
+        val screenHeight = with(LocalDensity.current) {
+            LocalWindowInfo.current.containerSize.height.toDp()
+        }
         return (screenHeight * 0.45f).coerceAtLeast(180.dp)
     }
 
@@ -3157,7 +3023,7 @@ open class MainActivity : ComponentActivity() {
 
     @Composable
     private fun GithubAvatar(username: String) {
-        var avatar by remember(username) { mutableStateOf<android.graphics.Bitmap?>(null) }
+        var avatar by remember(username) { mutableStateOf<Bitmap?>(null) }
         LaunchedEffect(username) {
             avatar = runCatching {
                 withContext(Dispatchers.IO) {
@@ -3194,7 +3060,7 @@ open class MainActivity : ComponentActivity() {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(R.drawable.ic_person),
+                imageVector = Icons.Filled.Person,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(26.dp),
@@ -3363,7 +3229,12 @@ open class MainActivity : ComponentActivity() {
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .offset(x = menuAnchor.x, y = menuAnchor.y)
+                    .offset {
+                        IntOffset(
+                            menuAnchor.x.roundToPx(),
+                            menuAnchor.y.roundToPx(),
+                        )
+                    }
                     .size(1.dp),
             ) {
                 DropdownMenuPopup(
@@ -3450,7 +3321,7 @@ open class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth(),
                     transitionSpec = {
                         val direction = if (targetState >= initialState) 1 else -1
-                        val pageSpring = spring<androidx.compose.ui.unit.IntOffset>(
+                        val pageSpring = spring<IntOffset>(
                             dampingRatio = 0.88f,
                             stiffness = 450f,
                         )
@@ -3608,7 +3479,7 @@ open class MainActivity : ComponentActivity() {
                                     } else {
                                         IconButton(onClick = { balancePasswordVisible = !balancePasswordVisible }) {
                                             Icon(
-                                                painterResource(if (balancePasswordVisible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
+                                                imageVector = if (balancePasswordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                                                 contentDescription = if (balancePasswordVisible) "隐藏凭据" else "显示凭据",
                                             )
                                         }
@@ -3970,7 +3841,9 @@ open class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun SettingsValueRow(title: String, value: String) {
+    private fun SettingsValueRow() {
+        val title = "Credex 版本"
+        val value = BuildConfig.VERSION_NAME
         if (uiStyle == UiStyle.MIUIX) {
             MiuixBasicComponent(
                 title = title,
@@ -4043,7 +3916,7 @@ open class MainActivity : ComponentActivity() {
     @Composable
     private fun PlatformLogo(
         brand: PlatformBrand,
-        size: androidx.compose.ui.unit.Dp,
+        size: Dp,
         modifier: Modifier = Modifier,
     ) {
         val bitmap = remember(brand) { PlatformLogoBitmaps.get(brand) }
@@ -4056,28 +3929,10 @@ open class MainActivity : ComponentActivity() {
             )
         } else {
             Icon(
-                painter = painterResource(R.drawable.ic_custom_endpoint),
+                imageVector = Icons.Filled.Code,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = modifier.size(size),
-            )
-        }
-    }
-
-    @Composable
-    private fun BrandMark(size: androidx.compose.ui.unit.Dp, prominent: Boolean = false) {
-        val ring = if (prominent) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurface
-        Box(
-            Modifier.size(size).border(if (prominent) 2.dp else 1.5.dp, ring, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(Modifier.size(size * 0.42f).border(if (prominent) 2.dp else 1.dp, ring, CircleShape))
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = (-size * 0.06f), y = size * 0.06f)
-                    .size(size * 0.16f)
-                    .background(QuotaColors.Success, CircleShape),
             )
         }
     }
@@ -4146,15 +4001,6 @@ open class MainActivity : ComponentActivity() {
         )
     }
 
-    @Composable
-    private fun quotaColor(value: Int) = when {
-        value < 15 -> QuotaColors.Error
-        value < 35 -> QuotaColors.Warning
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-
-    private fun planLabel(): String = state.plan.takeIf(String::isNotBlank)?.replaceFirstChar { it.uppercase() } ?: "Codex plan"
-
     private fun displayBalance(service: BalanceService): String {
         return balanceDisplayValue(service)
     }
@@ -4170,8 +4016,8 @@ open class MainActivity : ComponentActivity() {
         return "$plan · $label ${formatPlanCredits(value)} / ${formatPlanCredits(total)} Credits"
     }
 
-    private fun formatPlanCredits(value: java.math.BigDecimal): String = runCatching {
-        java.text.DecimalFormat("#,###").format(value.setScale(0, java.math.RoundingMode.DOWN).toBigInteger())
+    private fun formatPlanCredits(value: BigDecimal): String = runCatching {
+        DecimalFormat("#,###").format(value.setScale(0, RoundingMode.DOWN).toBigInteger())
     }.getOrDefault(value.stripTrailingZeros().toPlainString())
 
     private fun prepareLiveSync(forceEducation: Boolean = false) {
@@ -4420,8 +4266,8 @@ open class MainActivity : ComponentActivity() {
         }
         balancePasswordInput = if (balanceAuthMode.usesBrowserLogin() || balanceAuthMode == BalanceAuthMode.KIMI) "" else credentials?.secret.orEmpty()
         balancePasswordVisible = false
-        balanceIncludeVouchers = if (balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE) service?.includeVouchers == true else false
-        balanceIncludeGranted = if (balanceAuthMode == BalanceAuthMode.DEEPSEEK_API_KEY) service?.includeGrantedBalance != false else true
+        balanceIncludeVouchers = balanceAuthMode == BalanceAuthMode.SILICONFLOW_CONSOLE && service?.includeVouchers == true
+        balanceIncludeGranted = balanceAuthMode != BalanceAuthMode.DEEPSEEK_API_KEY || service?.includeGrantedBalance != false
         balanceEditorError = ""
         balanceAdaptationFailed = false
         balanceEditorPage = 0
@@ -4470,7 +4316,6 @@ open class MainActivity : ComponentActivity() {
                 BalanceAuthMode.API_KEY -> "请输入 API Key"
                 BalanceAuthMode.DEEPSEEK_API_KEY -> "请输入 DeepSeek API Key"
                 BalanceAuthMode.OPENCODE_GO -> "请输入 OpenCode API Key"
-                BalanceAuthMode.KIMI -> "请完成 Kimi 官方授权"
                 BalanceAuthMode.KIMI_BALANCE -> "请输入 Kimi API Key"
                 BalanceAuthMode.SILICONFLOW_CONSOLE,
                 BalanceAuthMode.MIMO_BALANCE,
@@ -4520,7 +4365,7 @@ open class MainActivity : ComponentActivity() {
             }
             return
         }
-        if ((selectedAuthMode == BalanceAuthMode.EMAIL_PASSWORD && account.isBlank()) || secret.isBlank()) {
+        if (selectedAuthMode == BalanceAuthMode.EMAIL_PASSWORD && account.isBlank() || secret.isBlank()) {
             closeBalanceEditor()
             message = "服务配置已保存"
             return
@@ -4528,7 +4373,7 @@ open class MainActivity : ComponentActivity() {
         balanceEditorBusy = true
         val secretChars = secret.toCharArray()
         balancePasswordInput = ""
-        message = "正在连接 ${name}…"
+        message = "正在连接 $name…"
         Thread {
             val result = try {
                 runCatching { StandardBalanceRepository.login(this, serviceId, account, secretChars) }

@@ -1,6 +1,5 @@
 package com.nickwoluff.credex
 
-import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.webkit.CookieManager
@@ -40,8 +39,7 @@ class CodexLoginActivity : LoginSurfaceActivity() {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         showLoginSurface(
             title = "OpenAI Codex",
-            primaryAction = LoginTopAction.RETRY,
-            onPrimaryAction = ::retryAuthorization,
+            onRetry = ::retryAuthorization,
         )
         if (savedInstanceState == null) clearLoginSessionData { beginAuthorization() }
     }
@@ -102,7 +100,7 @@ class CodexLoginActivity : LoginSurfaceActivity() {
     private fun finishWithRefresh() {
         if (isFinishing) return
         setResult(
-            Activity.RESULT_OK,
+            RESULT_OK,
             Intent().putExtra(EXTRA_REFRESH_AFTER_RESULT, true),
         )
         finish()

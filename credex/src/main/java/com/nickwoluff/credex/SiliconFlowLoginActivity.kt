@@ -8,6 +8,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.net.toUri
 
 /**
  * Login surface for SiliconFlow's web wallet.
@@ -52,8 +53,7 @@ class SiliconFlowLoginActivity : LoginSurfaceActivity() {
         }
         showLoginSurface(
             title = "SiliconFlow",
-            primaryAction = LoginTopAction.RETRY,
-            onPrimaryAction = { loadLoginUrl(webView.url?.takeIf { it.isNotBlank() } ?: SILICONFLOW_URL) },
+            onRetry = { loadLoginUrl(webView.url?.takeIf { it.isNotBlank() } ?: SILICONFLOW_URL) },
         )
         clearLoginSessionData(listOf(SILICONFLOW_ORIGIN, SILICONFLOW_ACCOUNT_ORIGIN, SILICONFLOW_ROOT_ORIGIN)) { loadLoginUrl(SILICONFLOW_URL) }
     }
@@ -83,7 +83,7 @@ class SiliconFlowLoginActivity : LoginSurfaceActivity() {
 
     private fun openWalletPageIfNeeded(url: String) {
         if (walletPageRequested || completed) return
-        val uri = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return
+        val uri = runCatching { url.toUri() }.getOrNull() ?: return
         if (uri.host?.equals(SILICONFLOW_HOST, ignoreCase = true) != true) return
         val path = uri.path.orEmpty()
         if (path.startsWith("/me/") || path.startsWith("/dashboard")) return

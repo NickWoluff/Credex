@@ -13,7 +13,6 @@ class RefreshLeaseTest {
         lease.cancel()
         val result = lease.runIfActive {
             committed = true
-            Unit
         }
 
         assertNull(result)

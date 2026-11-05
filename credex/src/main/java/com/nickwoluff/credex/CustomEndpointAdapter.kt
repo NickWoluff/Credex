@@ -63,7 +63,6 @@ internal data class CustomEndpointSelection(
 )
 
 internal class CustomEndpointAdaptationException(
-    val endpoint: String,
     attemptedContracts: List<CustomEndpointContract>,
     cause: Throwable?,
 ) : Exception(
@@ -94,8 +93,7 @@ internal fun isCustomEndpointAuthenticationFailure(error: Throwable): Boolean {
 
 internal fun customEndpointMessageIndicatesAuthentication(message: String): Boolean {
     val normalized = message.trim().lowercase()
-    if (normalized.isBlank()) return false
-    return listOf(
+    return normalized.isNotBlank() && listOf(
         "invalid email or password",
         "incorrect username or password",
         "invalid username or password",

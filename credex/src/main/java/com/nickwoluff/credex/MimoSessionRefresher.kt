@@ -11,6 +11,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.net.toUri
 import java.net.URI
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -23,7 +24,6 @@ import java.util.concurrent.atomic.AtomicReference
  */
 internal object MimoSessionRefresher {
     private const val ORIGIN = "https://platform.xiaomimimo.com"
-    private const val BALANCE_URL = "$ORIGIN/console/balance"
     private const val LOAD_TIMEOUT_MILLIS = 20_000L
     private const val COOKIE_SETTLE_MILLIS = 750L
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -138,7 +138,7 @@ internal object MimoSessionRefresher {
     }
 
     private fun isMimoApiUrl(url: String): Boolean {
-        val uri = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return false
+        val uri = runCatching { url.toUri() }.getOrNull() ?: return false
         return uri.host.equals("platform.xiaomimimo.com", ignoreCase = true) &&
             uri.path.orEmpty().startsWith("/api/v1")
     }

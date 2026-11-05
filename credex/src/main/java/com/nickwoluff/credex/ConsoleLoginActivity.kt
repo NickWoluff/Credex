@@ -47,7 +47,7 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
             false
         }
         webView.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): android.webkit.WebResourceResponse? {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 if (request.url.host.orEmpty().isAllowedBy(spec)) {
                     request.requestHeaders["Cookie"]?.let { captureCookie(it, spec) }
                 }
@@ -105,8 +105,7 @@ class ConsoleLoginActivity : LoginSurfaceActivity() {
         }
         showLoginSurface(
             title = spec.brand,
-            primaryAction = LoginTopAction.RETRY,
-            onPrimaryAction = { loadLoginUrl(webView.url?.takeIf { it.isNotBlank() } ?: spec.loginUrl) },
+            onRetry = { loadLoginUrl(webView.url?.takeIf { it.isNotBlank() } ?: spec.loginUrl) },
         )
         clearLoginSessionData(spec.cookieOrigins) { loadLoginUrl(spec.loginUrl) }
     }

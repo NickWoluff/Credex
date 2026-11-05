@@ -2,6 +2,7 @@ package com.nickwoluff.credex
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.net.toUri
 
 /**
  * Public, credential-free URIs consumed by the Android display hosts.
@@ -10,7 +11,7 @@ internal object QuotaDisplayContract {
     private const val AUTHORITY = "com.nickwoluff.credex"
     private const val BASE = "content://$AUTHORITY/quota"
 
-    val assistantUri: Uri = Uri.parse("$BASE/assistant")
+    val assistantUri: Uri = "$BASE/assistant".toUri()
 
     fun notifyAll(context: Context) {
         context.contentResolver.notifyChange(assistantUri, null)

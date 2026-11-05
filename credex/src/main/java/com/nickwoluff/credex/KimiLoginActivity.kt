@@ -32,8 +32,7 @@ class KimiLoginActivity : LoginSurfaceActivity() {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         showLoginSurface(
             title = "Kimi",
-            primaryAction = LoginTopAction.RETRY,
-            onPrimaryAction = { beginAuthorization(serviceId) },
+            onRetry = { beginAuthorization(serviceId) },
         )
         clearLoginSessionData(listOf("https://kimi.com", "https://www.kimi.com", "https://api.kimi.com", "https://auth.kimi.com")) { beginAuthorization(serviceId) }
     }

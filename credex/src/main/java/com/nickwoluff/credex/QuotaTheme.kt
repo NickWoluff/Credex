@@ -1,8 +1,8 @@
 package com.nickwoluff.credex
 
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MotionScheme
@@ -46,12 +46,23 @@ private val MiuixLightScheme = lightColorScheme(
     onTertiaryContainer = Color(0xFF3482FF),
     background = Color.White,
     onBackground = Color.Black,
-    surface = Color.White,
+    surface = Color(0xFFF7F7F7),
     onSurface = Color.Black,
     surfaceVariant = Color.White,
     onSurfaceVariant = Color(0xFF8C93B0),
+    surfaceContainer = Color.White,
+    surfaceContainerLow = Color.White,
+    surfaceContainerHigh = Color(0xFFE8E8E8),
+    surfaceContainerHighest = Color(0xFFE8E8E8),
+    surfaceContainerLowest = Color.White,
+    surfaceDim = Color(0xFFE8E8E8),
+    surfaceBright = Color.White,
     outline = Color(0xFFD9D9D9),
-    error = QuotaColors.Error,
+    outlineVariant = Color(0xFFE0E0E0),
+    error = Color(0xFFE94634),
+    onError = Color.White,
+    errorContainer = Color(0xFFFDF6F4),
+    onErrorContainer = Color(0xFF410002),
 )
 
 private val MiuixDarkScheme = darkColorScheme(
@@ -68,16 +79,26 @@ private val MiuixDarkScheme = darkColorScheme(
     tertiaryContainer = Color(0xFF2B3B54),
     onTertiaryContainer = Color(0xFF4788FF),
     background = Color(0xFF242424),
-    onBackground = Color(0xFFE6FFFFFF),
+    onBackground = Color(0xE6FFFFFF),
     surface = Color.Black,
     onSurface = Color(0xFFF2F2F2),
     surfaceVariant = Color(0xFF242424),
     onSurfaceVariant = Color(0xFF787E96),
+    surfaceContainer = Color(0xFF242424),
+    surfaceContainerLow = Color(0xFF242424),
+    surfaceContainerHigh = Color(0xFF242424),
+    surfaceContainerHighest = Color(0xFF2D2D2D),
+    surfaceContainerLowest = Color(0xFF242424),
+    surfaceDim = Color(0xFF242424),
+    surfaceBright = Color(0xFF2D2D2D),
     outline = Color(0xFF404040),
-    error = QuotaColors.Error,
+    outlineVariant = Color(0xFF393939),
+    error = Color(0xFFF12522),
+    onError = Color.White,
+    errorContainer = Color(0xFF2E0603),
+    onErrorContainer = Color(0xFFFFDAD6),
 )
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun CredexTheme(
     style: UiStyle = UiStyle.MATERIAL,
@@ -142,6 +163,7 @@ private fun customMaterialColorScheme(
     dark = dark,
 )
 
+@RequiresApi(Build.VERSION_CODES.S)
 private fun dynamicMaterialColorScheme(
     context: android.content.Context,
     paletteStyle: MaterialPaletteStyle,
@@ -156,6 +178,8 @@ private fun generatedMaterialColorScheme(
     paletteStyle: MaterialPaletteStyle,
     dark: Boolean,
 ) = MaterialDynamicColors().let { roles ->
+    // Compose 目前只暴露默认动态色方案。自定义 Tonal Spot、Vibrant 等风格需要使用
+    // Material Components 的配色生成器；调用范围固定且不包含对外 API。
     val source = Hct.fromInt(sourceArgb)
     val scheme: DynamicScheme = when (paletteStyle) {
         MaterialPaletteStyle.TONAL_SPOT -> SchemeTonalSpot(source, dark, 0.0)

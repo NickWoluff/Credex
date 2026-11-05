@@ -7,13 +7,14 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Build
 import android.view.ViewGroup
-import android.view.WindowInsets
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.view.WindowCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 abstract class BaseWidgetConfigurationActivity : Activity() {
     protected abstract val maxSelections: Int
@@ -49,10 +50,12 @@ abstract class BaseWidgetConfigurationActivity : Activity() {
             setBackgroundColor(Color.WHITE)
         }
         root.setOnApplyWindowInsetsListener { view, insets ->
-            val bars = insets.getInsets(WindowInsets.Type.systemBars())
+            val bars = WindowInsetsCompat.toWindowInsetsCompat(insets, view)
+                .getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(32 + bars.left, 20 + bars.top, 32 + bars.right, 24 + bars.bottom)
             insets
         }
+        ViewCompat.requestApplyInsets(root)
         root.addView(TextView(this).apply {
             text = if (maxSelections == 1) "选择要展示的服务" else "选择一个或两个服务"
             textSize = 26f

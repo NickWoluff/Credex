@@ -115,7 +115,7 @@ class QuotaForegroundService : Service() {
             else -> "等待配额数据"
         }
         return Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_quota)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("Credex")
             .setContentText(summary)
             .setSubText("持续同步")

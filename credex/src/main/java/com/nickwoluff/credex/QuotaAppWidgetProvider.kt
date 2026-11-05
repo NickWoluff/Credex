@@ -11,6 +11,9 @@ import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.annotation.ColorRes
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.text.DecimalFormat
 
 internal enum class WidgetWindow { WEEKLY, FIVE_HOUR, NONE }
 
@@ -145,7 +148,7 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
                 return
             }
             ACTION_REFRESH -> {
-                requestRefresh(context, force = true)
+                requestRefresh(context)
                 return
             }
         }
@@ -321,22 +324,21 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
                 val showHealth = DashboardPreferences.showHealth(context)
                 setTextColor(
                     R.id.widget_primary_status_dot,
-                    context.getColor(statusColor(state.health, presentation.primaryBalance, refreshing = false)),
+                    context.getColor(statusColor(state.health, presentation.primaryBalance)),
                 )
                 setViewVisibility(R.id.widget_primary_status_dot, if (showHealth) View.VISIBLE else View.GONE)
                 if (!compact && presentation.showSecondary) {
-                    val showSecondary = presentation.showSecondary
                     setViewVisibility(
                         R.id.widget_secondary_group,
-                        if (showSecondary) View.VISIBLE else View.GONE,
+                        View.VISIBLE,
                     )
                     setViewVisibility(
                         R.id.widget_secondary_title_group,
-                        if (showSecondary) View.VISIBLE else View.GONE,
+                        View.VISIBLE,
                     )
                     setViewVisibility(
                         R.id.widget_service_divider,
-                        if (showSecondary) View.VISIBLE else View.GONE,
+                        View.VISIBLE,
                     )
                     if (presentation.showFiveHourSecondary) {
                         setTextViewText(R.id.widget_secondary_label, context.getString(R.string.widget_five_hour))
@@ -365,7 +367,7 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
                     val secondaryBalance = presentation.secondaryBalance
                     setTextColor(
                         R.id.widget_secondary_status_dot,
-                        context.getColor(statusColor(state.health, secondaryBalance, refreshing = false)),
+                        context.getColor(statusColor(state.health, secondaryBalance)),
                     )
                     setViewVisibility(R.id.widget_secondary_status_dot, if (showHealth) View.VISIBLE else View.GONE)
                 }
@@ -461,8 +463,7 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
         }
 
         @ColorRes
-        private fun statusColor(health: QuotaHealth, balance: BalanceService?, refreshing: Boolean) = when {
-            refreshing -> R.color.widget_status_refreshing
+        private fun statusColor(health: QuotaHealth, balance: BalanceService?) = when {
             balance?.health == BalanceHealth.FRESH -> R.color.widget_status_success
             balance?.health == BalanceHealth.CACHED -> R.color.widget_status_warning
             balance?.health == BalanceHealth.AUTH_REQUIRED || balance?.health == BalanceHealth.ERROR -> R.color.widget_status_error
@@ -472,12 +473,12 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
             else -> R.color.widget_text_muted
         }
 
-        private fun requestRefresh(context: Context, force: Boolean) {
+        private fun requestRefresh(context: Context) {
             val appContext = context.applicationContext
             // Always render the cached state first. An offline refresh must never replace the
             // selected services with an empty quota state or discard their visible values.
             updateAll(appContext, QuotaRepository.current(appContext), refreshing = true)
-            if (!QuotaRefreshScheduler.requestImmediate(appContext, force)) {
+            if (!QuotaRefreshScheduler.requestImmediate(appContext, true)) {
                 updateAll(appContext, QuotaRepository.current(appContext))
             }
         }
@@ -505,19 +506,19 @@ open class QuotaAppWidgetProvider : AppWidgetProvider() {
         }
 
         private fun formatWidgetTokenCount(
-            value: java.math.BigDecimal,
+            value: BigDecimal,
             collapseTokenValues: Boolean,
             unitSystem: WidgetTokenUnitSystem,
         ): String = if (collapseTokenValues) {
             WidgetTokenValueFormatter.format(value, unitSystem)
         } else {
-            java.text.DecimalFormat("#,###").format(value.setScale(0, java.math.RoundingMode.DOWN))
+            DecimalFormat("#,###").format(value.setScale(0, RoundingMode.DOWN))
         }
 
         private fun balanceDisplayProgress(service: BalanceService): Int? =
             balanceDisplayRatio(service)
-                ?.multiply(java.math.BigDecimal(WIDGET_PROGRESS_MAX))
-                ?.setScale(0, java.math.RoundingMode.HALF_UP)
+                ?.multiply(BigDecimal(WIDGET_PROGRESS_MAX))
+                ?.setScale(0, RoundingMode.HALF_UP)
                 ?.toInt()
                 ?.coerceIn(0, WIDGET_PROGRESS_MAX)
 

@@ -20,7 +20,7 @@ fun rememberMiuixBlurBackdrop(): Any? = if (Build.VERSION.SDK_INT >= Build.VERSI
 
 fun Modifier.miuixBackdropCapture(backdrop: Any?): Modifier =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backdrop != null) {
-        Api33MiuixBlur.capture(this, backdrop)
+        Api33MiuixBlur.run { this@miuixBackdropCapture.capture(backdrop) }
     } else {
         this
     }
@@ -31,7 +31,7 @@ fun Modifier.miuixBackdropBlur(
     blurRadius: Float,
     enabled: Boolean,
 ): Modifier = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && enabled && backdrop != null) {
-    Api33MiuixBlur.blur(this, backdrop, shape, blurRadius)
+    Api33MiuixBlur.run { this@miuixBackdropBlur.blur(backdrop, shape, blurRadius) }
 } else {
     this
 }
@@ -41,9 +41,9 @@ private object Api33MiuixBlur {
     @Composable
     fun rememberBackdrop(): LayerBackdrop = rememberLayerBackdrop()
 
-    fun capture(modifier: Modifier, backdrop: Any): Modifier = modifier.layerBackdrop(backdrop as LayerBackdrop)
+    fun Modifier.capture(backdrop: Any): Modifier = layerBackdrop(backdrop as LayerBackdrop)
 
-    fun blur(modifier: Modifier, backdrop: Any, shape: Shape, blurRadius: Float): Modifier = modifier.textureBlur(
+    fun Modifier.blur(backdrop: Any, shape: Shape, blurRadius: Float): Modifier = textureBlur(
         backdrop = backdrop as LayerBackdrop,
         shape = shape,
         blurRadius = blurRadius,

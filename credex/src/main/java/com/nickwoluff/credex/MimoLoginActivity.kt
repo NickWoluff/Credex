@@ -11,6 +11,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.net.toUri
 
 /** MIMO console login. Only the runtime cookie header is returned to the caller. */
 class MimoLoginActivity : LoginSurfaceActivity() {
@@ -49,24 +50,23 @@ class MimoLoginActivity : LoginSurfaceActivity() {
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
-                if (request.isForMainFrame) showLoadFailure(retryable = true)
+                if (request.isForMainFrame) showLoadFailure()
                 super.onReceivedError(view, request, error)
             }
 
             override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
-                if (request.isForMainFrame && errorResponse.statusCode >= 500) showLoadFailure(retryable = true)
+                if (request.isForMainFrame && errorResponse.statusCode >= 500) showLoadFailure()
                 super.onReceivedHttpError(view, request, errorResponse)
             }
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-                showLoadFailure(retryable = true)
+                showLoadFailure()
                 return true
             }
         }
         showLoginSurface(
             title = "Xiaomi MIMO",
-            primaryAction = LoginTopAction.RETRY,
-            onPrimaryAction = { loadLoginPage(forceReload = true) },
+            onRetry = { loadLoginPage(forceReload = true) },
         )
         // 小米 MIMO 依赖小米账号会话签发短时平台 Cookie。
         // 此处清空共享 WebView Cookie 会让控制台无法静默续签。
@@ -106,7 +106,7 @@ class MimoLoginActivity : LoginSurfaceActivity() {
                 hasRetried = true
                 loadLoginPage(forceReload = true)
             } else {
-                showLoadFailure(retryable = true)
+                showLoadFailure()
             }
         }
         loadTimeout = timeout
@@ -118,16 +118,12 @@ class MimoLoginActivity : LoginSurfaceActivity() {
         loadTimeout = null
     }
 
-    private fun showLoadFailure(retryable: Boolean) {
+    private fun showLoadFailure() {
         if (completed) return
         cancelLoadTimeout()
         webView.stopLoading()
         webView.visibility = View.GONE
-        loginStatus = if (retryable) {
-            "Xiaomi MIMO 页面加载失败，请点击重新加载"
-        } else {
-            "Xiaomi MIMO 页面加载失败"
-        }
+        loginStatus = "Xiaomi MIMO 页面加载失败，请点击重新加载"
     }
 
     private fun capture(value: String?) {
@@ -163,7 +159,7 @@ class MimoLoginActivity : LoginSurfaceActivity() {
 
     private fun maybeComplete(url: String) {
         if (completed || cookieHeader.isBlank()) return
-        val uri = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return
+        val uri = runCatching { url.toUri() }.getOrNull() ?: return
         if (!HOST.equals(uri.host, ignoreCase = true) || !uri.path.orEmpty().startsWith("/console")) return
         completed = true
         CookieManager.getInstance().flush()
@@ -175,7 +171,7 @@ class MimoLoginActivity : LoginSurfaceActivity() {
     }
 
     private fun isConsoleUrl(url: String): Boolean {
-        val uri = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return false
+        val uri = runCatching { url.toUri() }.getOrNull() ?: return false
         return HOST.equals(uri.host, ignoreCase = true) && uri.path.orEmpty().startsWith("/console")
     }
 
